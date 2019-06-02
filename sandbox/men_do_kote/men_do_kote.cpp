@@ -13,28 +13,40 @@ cv::Size get_cv_size(const rs2::frame &f) {
   const auto vf = f.as<rs2::video_frame>();
   return cv::Size(vf.get_width(), vf.get_height());
 }
-std::vector<cv::Vec3f> get_men(const cv::Mat& input, cv::Mat& output) {
+struct men_do_kote_t {
+  std::vector<cv::Vec3f> mens;
+  std::vector<std::vector<cv::Point> > dos;
+  std::vector<std::vector<cv::Point> > kotes;
+};
+cv::Mat bgr2hsv(const cv::Mat& bgr) {
+  cv::Mat hsv;
+  cv::cvtColor(bgr, hsv, cv::COLOR_BGR2HSV_FULL);
+  return hsv;
+}
+men_do_kote_t get_men_do_kote(const cv::Mat& input, cv::Mat& output) {
   const double
     resize_scale = 0.2,
     resize_scale_inv = 1/resize_scale;
-  const cv::GScalar  // YUV(YCbCr) threshold for red MEN
-    //                      Y   Cb   Cr
-    thresh_low(cv::Scalar( 20,  80, 170)),
-    thresh_up (cv::Scalar(150, 130, 255));
+  const cv::GScalar  // HSV threshold for red MEN
+    //                           H    S    V
+    red_thresh_low1(cv::Scalar(252, 128,  64)),
+    red_thresh_up1 (cv::Scalar(255, 255, 255)),
+    red_thresh_low2(cv::Scalar(  0, 128,  64)),
+    red_thresh_up2 (cv::Scalar(  3, 255, 255));
   const auto kernel5 = cv::Mat::ones(5, 5, CV_8U)*255;
   const cv::GMat
     in,
     resize  = cv::gapi::resize(in, cv::Size(), resize_scale, resize_scale),
-    yuv     = cv::gapi::BGR2YUV(resize),
-    red     = cv::gapi::inRange(yuv, thresh_low, thresh_up),
-    //erode   = cv::gapi::erode3x3(red),
-    dilate  = cv::gapi::dilate3x3(red,  3),
+    red1    = cv::gapi::inRange(resize, red_thresh_low1, red_thresh_up1),
+    red2    = cv::gapi::inRange(resize, red_thresh_low2, red_thresh_up2),
+    red     = cv::gapi::bitwise_or(red1, red2),
+    dilate  = cv::gapi::dilate3x3(red, 3),
     blur    = cv::gapi::gaussianBlur(dilate, cv::Size(7, 7), 2, 2),
     out     = blur;
   cv::GComputation color2blur(in, out);
 
   cv::Mat rslt;
-  color2blur.apply(input, rslt);
+  color2blur.apply(bgr2hsv(input), rslt);
 
   const int dp=2, minDist=rslt.rows/8, canny_thresh_high=32, thresh_find=30, minRadius=10, maxRadius=30;
   std::vector<cv::Vec3f> circles;
@@ -58,7 +70,7 @@ std::vector<cv::Vec3f> get_men(const cv::Mat& input, cv::Mat& output) {
     c[1] *= resize_scale_inv;
     c[2] *= resize_scale_inv;
   }
-  return circles;
+  return men_do_kote_t{circles, std::vector<std::vector<cv::Point> >(),std::vector<std::vector<cv::Point> >()};
 }
 int main(int argc, char * argv[]) try {
     // Declare RealSense pipeline, encapsulating the actual device and sensors
@@ -97,9 +109,9 @@ int main(int argc, char * argv[]) try {
 
         // Search circle
         Mat intermediate;
-        const auto circles = get_men(color_mat, intermediate);
+        const auto mdk = get_men_do_kote(color_mat, intermediate);
 
-        for (auto&& c : circles) {
+        for (auto&& c : mdk.mens) {
           const cv::Point center(cvRound(c[0]), cvRound(c[1]));
           const int radius = cvRound(c[2]);
 
