@@ -134,83 +134,83 @@ float get_depth_scale(rs2::device dev) {
 
 
 int main(int argc, char * argv[]) try {
-    constexpr int FPS = 30;
-    // Declare RealSense pipeline, encapsulating the actual device and sensors
-    rs2::pipeline pipe;
-    // Create a configuration for configuring the pipeline with a non default profile
-    rs2::config cfg;
-    // Add desired streams to configuration
-    cfg.disable_all_streams();
-    cfg.enable_stream(RS2_STREAM_COLOR, RS2_FORMAT_BGR8, FPS);
-    cfg.enable_stream(RS2_STREAM_DEPTH, RS2_FORMAT_Z16,  FPS);
+  constexpr int FPS = 30;
+  // Declare RealSense pipeline, encapsulating the actual device and sensors
+  rs2::pipeline pipe;
+  // Create a configuration for configuring the pipeline with a non default profile
+  rs2::config cfg;
+  // Add desired streams to configuration
+  cfg.disable_all_streams();
+  cfg.enable_stream(RS2_STREAM_COLOR, RS2_FORMAT_BGR8, FPS);
+  cfg.enable_stream(RS2_STREAM_DEPTH, RS2_FORMAT_Z16,  FPS);
 
-    // Instruct pipeline to start streaming with the requested configuration
-    auto profile = pipe.start(cfg);
+  // Instruct pipeline to start streaming with the requested configuration
+  auto profile = pipe.start(cfg);
 
-    // Set short_range accurate preset
-    const auto dsensor = profile.get_device().first<rs2::depth_sensor>();
-    dsensor.set_option(RS2_OPTION_VISUAL_PRESET, RS2_SR300_VISUAL_PRESET_SHORT_RANGE);
-    dsensor.set_option(RS2_OPTION_MOTION_RANGE, 2);
-    dsensor.set_option(RS2_OPTION_FRAMES_QUEUE_SIZE, 2);
-    const float depth_scale = dsensor.get_depth_scale();
+  // Set short_range accurate preset
+  const auto dsensor = profile.get_device().first<rs2::depth_sensor>();
+  dsensor.set_option(RS2_OPTION_VISUAL_PRESET, RS2_SR300_VISUAL_PRESET_SHORT_RANGE);
+  dsensor.set_option(RS2_OPTION_MOTION_RANGE, 2);
+  dsensor.set_option(RS2_OPTION_FRAMES_QUEUE_SIZE, 2);
+  const float depth_scale = dsensor.get_depth_scale();
 
-    // Set auto exposure and auto white balance
-    //const auto csensor = profile.get_device().first<rs2::sr300_color_sensor>();
-    //csensor.set_option(RS2_OPTION_ENABLE_AUTO_EXPOSURE, 1);
-    //csensor.set_option(RS2_OPTION_ENABLE_AUTO_WHITE_BALANCE, 1);
-    //csensor.set_option(RS2_OPTION_FRAMES_QUEUE_SIZE, 2);
+  // Set auto exposure and auto white balance
+  //const auto csensor = profile.get_device().first<rs2::sr300_color_sensor>();
+  //csensor.set_option(RS2_OPTION_ENABLE_AUTO_EXPOSURE, 1);
+  //csensor.set_option(RS2_OPTION_ENABLE_AUTO_WHITE_BALANCE, 1);
+  //csensor.set_option(RS2_OPTION_FRAMES_QUEUE_SIZE, 2);
 
-    const auto men_window = "MEN";
-    const auto do_kote_window = "DO_KOTE";
-    const auto color_window = "Color";
-    const auto depth_window = "Depth";
-    cv::namedWindow(color_window,   cv::WINDOW_AUTOSIZE);
-    cv::namedWindow(depth_window,   cv::WINDOW_AUTOSIZE);
-    cv::namedWindow(men_window,     cv::WINDOW_AUTOSIZE);
-    cv::namedWindow(do_kote_window, cv::WINDOW_AUTOSIZE);
+  const auto men_window = "MEN";
+  const auto do_kote_window = "DO_KOTE";
+  const auto color_window = "Color";
+  const auto depth_window = "Depth";
+  cv::namedWindow(color_window,   cv::WINDOW_AUTOSIZE);
+  cv::namedWindow(depth_window,   cv::WINDOW_AUTOSIZE);
+  cv::namedWindow(men_window,     cv::WINDOW_AUTOSIZE);
+  cv::namedWindow(do_kote_window, cv::WINDOW_AUTOSIZE);
 
-    rs2::align  align(RS2_STREAM_COLOR);
+  rs2::align  align(RS2_STREAM_COLOR);
 
-    while (cv::waitKey(1)!='q') {
-        // Wait for next set of frames from the camera
-        const rs2::frameset     frameset  = align.process(pipe.wait_for_frames());
-        const rs2::video_frame  color     = frameset.get_color_frame();
-        const rs2::depth_frame  depth     = frameset.get_depth_frame();
-        if (!color || !depth) continue;
+  while (cv::waitKey(1)!='q') {
+    // Wait for next set of frames from the camera
+    const rs2::frameset     frameset  = align.process(pipe.wait_for_frames());
+    const rs2::video_frame  color     = frameset.get_color_frame();
+    const rs2::depth_frame  depth     = frameset.get_depth_frame();
+    if (!color || !depth) continue;
 
-        // Convert rs2::frame to cv::Mat
-        const cv::Mat color_mat(get_cv_size(color), CV_8UC3,  (void*)color.get_data(), cv::Mat::AUTO_STEP);
-        const cv::Mat depth_mat(get_cv_size(depth), CV_16UC1, (void*)depth.get_data(), cv::Mat::AUTO_STEP);
+    // Convert rs2::frame to cv::Mat
+    const cv::Mat color_mat(get_cv_size(color), CV_8UC3,  (void*)color.get_data(), cv::Mat::AUTO_STEP);
+    const cv::Mat depth_mat(get_cv_size(depth), CV_16UC1, (void*)depth.get_data(), cv::Mat::AUTO_STEP);
 
-        // Search datotsu-parts
-        cv::Mat men_visual, do_kote_visual;
-        const auto mdk = get_men_do_kote(color_mat, men_visual, do_kote_visual);
+    // Search datotsu-parts
+    cv::Mat men_visual, do_kote_visual;
+    const auto mdk = get_men_do_kote(color_mat, men_visual, do_kote_visual);
 
-        for (auto&& c : mdk.mens) {
-          const cv::Point center(cvRound(c[0]), cvRound(c[1]));
-          const int radius = cvRound(c[2]);
+    for (auto&& c : mdk.mens) {
+      const cv::Point center(cvRound(c[0]), cvRound(c[1]));
+      const int radius = cvRound(c[2]);
 
-          // Draw circle
-          cv::circle(color_mat, center, radius, cv::Scalar(0,255,255), 2, 8, 0);
-          cv::circle(depth_mat, center, radius, cv::Scalar(255*256), 2, 8, 0);
-        }
-        cv::drawContours(color_mat, mdk.dos, -1, cv::Scalar(255,0,0));
-        cv::drawContours(color_mat, mdk.kotes, -1, cv::Scalar(0,255,255));
-
-        // Update the window with new data
-        cv::imshow(color_window, color_mat);
-        cv::imshow(depth_window, depth_mat);
-        cv::imshow(men_window, men_visual);
-        cv::imshow(do_kote_window, do_kote_visual);
+      // Draw circle
+      cv::circle(color_mat, center, radius, cv::Scalar(0,255,255), 2, 8, 0);
+      cv::circle(depth_mat, center, radius, cv::Scalar(255*256), 2, 8, 0);
     }
+    cv::drawContours(color_mat, mdk.dos, -1, cv::Scalar(255,0,0));
+    cv::drawContours(color_mat, mdk.kotes, -1, cv::Scalar(0,255,255));
 
-    return EXIT_SUCCESS;
+    // Update the window with new data
+    cv::imshow(color_window, color_mat);
+    cv::imshow(depth_window, depth_mat);
+    cv::imshow(men_window, men_visual);
+    cv::imshow(do_kote_window, do_kote_visual);
+  }
+
+  return EXIT_SUCCESS;
 } catch (const rs2::error & e) {
-    std::cerr << "RealSense error calling " << e.get_failed_function() << "(" << e.get_failed_args() << "):\n    " << e.what() << std::endl;
-    return EXIT_FAILURE;
+  std::cerr << "RealSense error calling " << e.get_failed_function() << "(" << e.get_failed_args() << "):\n    " << e.what() << std::endl;
+  return EXIT_FAILURE;
 } catch (const std::exception& e) {
-    std::cerr << e.what() << std::endl;
-    return EXIT_FAILURE;
+  std::cerr << e.what() << std::endl;
+  return EXIT_FAILURE;
 }
 
 
