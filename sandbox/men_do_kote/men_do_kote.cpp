@@ -10,9 +10,8 @@
 #include <numeric>
 
 // Query frame size (width and height)
-cv::Size get_cv_size(const rs2::frame &f) {
-  const auto vf = f.as<rs2::video_frame>();
-  return cv::Size(vf.get_width(), vf.get_height());
+cv::Size get_cv_size(const rs2::video_frame &f) {
+  return cv::Size(f.get_width(), f.get_height());
 }
 struct men_do_kote_t {
   std::vector<cv::Vec3f> mens;
@@ -38,11 +37,16 @@ men_do_kote_t get_men_do_kote(
     red_thresh_up1    (cv::Scalar(255, 255, 255)),
     red_thresh_low2   (cv::Scalar(  0, 128,  64)),
     red_thresh_up2    (cv::Scalar(  3, 255, 255)),
-    blue_thresh_low   (cv::Scalar(135, 128,  64)),
+    blue_thresh_low   (cv::Scalar(135, 128,  48)),
     blue_thresh_up    (cv::Scalar(175, 255, 255)),
     yellow_thresh_low (cv::Scalar( 28,  96,  64)),
     yellow_thresh_up  (cv::Scalar( 44, 255, 255));
   const auto kernel5 = cv::Mat::ones(5, 5, CV_8U)*255;
+  //cv::GMat
+  //  in, h, s, v,
+  //  resize    = cv::gapi::resize(in, cv::Size(), resize_scale, resize_scale);
+  //std::tie(h,s,v) = cv::gapi::split3(resize);
+  //cv::GComputation separate_hsv(cv::GIn(in), cv::GOut(v, s, h));
   const cv::GMat
     in,
     resize    = cv::gapi::resize(in, cv::Size(), resize_scale, resize_scale),
@@ -102,13 +106,13 @@ men_do_kote_t get_men_do_kote(
     const int radius = cvRound(c[2]);
 
     // Draw circle
-    circle(men_visual, center, radius, cv::Scalar(0,0,255), 1, 8, 0);
+    //circle(men_visual, center, radius, cv::Scalar(0,0,255), 1, 8, 0);
   }
 
   cv::cvtColor(do_kote_im, do_kote_visual, cv::COLOR_GRAY2BGR);
   // Draw contours
-  cv::drawContours(do_kote_visual, mdk.dos, -1, cv::Scalar(255,0,0));
-  cv::drawContours(do_kote_visual, mdk.kotes, -1, cv::Scalar(0,255,255));
+  //cv::drawContours(do_kote_visual, mdk.dos, -1, cv::Scalar(255,0,0));
+  //cv::drawContours(do_kote_visual, mdk.kotes, -1, cv::Scalar(0,255,255));
 
   // Re-scale
   for (auto&& c : mdk.mens) { c *= resize_scale_inv; }
@@ -116,45 +120,70 @@ men_do_kote_t get_men_do_kote(
   for (auto&& k : mdk.kotes){ for (auto&& kp : k) { kp*= resize_scale_inv; } }
   return mdk;
 }
+
+float get_depth_scale(rs2::device dev) {
+  // Go over the device's sensors
+  for (rs2::sensor& sensor : dev.query_sensors()) {
+    // Check if the sensor if a depth sensor
+    if (rs2::depth_sensor dpt = sensor.as<rs2::depth_sensor>()) {
+      return dpt.get_depth_scale();
+    }
+  }
+  throw std::runtime_error("Device does not have a depth sensor");
+}
+
+
 int main(int argc, char * argv[]) try {
+    constexpr int FPS = 30;
     // Declare RealSense pipeline, encapsulating the actual device and sensors
     rs2::pipeline pipe;
     // Create a configuration for configuring the pipeline with a non default profile
     rs2::config cfg;
-    const rs2::align  align_to(RS2_STREAM_DEPTH);
     // Add desired streams to configuration
     cfg.disable_all_streams();
-    cfg.enable_stream(RS2_STREAM_COLOR, RS2_FORMAT_BGR8);
-    cfg.enable_stream(RS2_STREAM_DEPTH, RS2_FORMAT_Z16);
+    cfg.enable_stream(RS2_STREAM_COLOR, RS2_FORMAT_BGR8, FPS);
+    cfg.enable_stream(RS2_STREAM_DEPTH, RS2_FORMAT_Z16,  FPS);
 
     // Instruct pipeline to start streaming with the requested configuration
     auto profile = pipe.start(cfg);
 
     // Set short_range accurate preset
-    const auto sensor = profile.get_device().first<rs2::depth_sensor>();
-    sensor.set_option(RS2_OPTION_VISUAL_PRESET, RS2_SR300_VISUAL_PRESET_SHORT_RANGE);
+    const auto dsensor = profile.get_device().first<rs2::depth_sensor>();
+    dsensor.set_option(RS2_OPTION_VISUAL_PRESET, RS2_SR300_VISUAL_PRESET_SHORT_RANGE);
+    dsensor.set_option(RS2_OPTION_MOTION_RANGE, 2);
+    dsensor.set_option(RS2_OPTION_FRAMES_QUEUE_SIZE, 2);
+    const float depth_scale = dsensor.get_depth_scale();
 
-    using namespace cv;
+    // Set auto exposure and auto white balance
+    //const auto csensor = profile.get_device().first<rs2::sr300_color_sensor>();
+    //csensor.set_option(RS2_OPTION_ENABLE_AUTO_EXPOSURE, 1);
+    //csensor.set_option(RS2_OPTION_ENABLE_AUTO_WHITE_BALANCE, 1);
+    //csensor.set_option(RS2_OPTION_FRAMES_QUEUE_SIZE, 2);
+
     const auto men_window = "MEN";
     const auto do_kote_window = "DO_KOTE";
     const auto color_window = "Color";
     const auto depth_window = "Depth";
-    namedWindow(color_window, WINDOW_AUTOSIZE);
-    //namedWindow(depth_window, WINDOW_AUTOSIZE);
-    namedWindow(men_window, WINDOW_AUTOSIZE);
-    namedWindow(do_kote_window, WINDOW_AUTOSIZE);
+    cv::namedWindow(color_window,   cv::WINDOW_AUTOSIZE);
+    cv::namedWindow(depth_window,   cv::WINDOW_AUTOSIZE);
+    cv::namedWindow(men_window,     cv::WINDOW_AUTOSIZE);
+    cv::namedWindow(do_kote_window, cv::WINDOW_AUTOSIZE);
 
-    while (waitKey(1)!='q') {
-        const rs2::frameset data = pipe.wait_for_frames(); // Wait for next set of frames from the camera
-        const rs2::frame color = data.get_color_frame();
-        const rs2::frame depth = data.get_depth_frame();
+    rs2::align  align(RS2_STREAM_COLOR);
 
-        // Create OpenCV matrix of size (w,h) from the colorized depth data
-        const Mat color_mat(get_cv_size(color), CV_8UC3, (void*)color.get_data(), Mat::AUTO_STEP);
-        const Mat depth_mat(get_cv_size(depth), CV_16UC1, (void*)depth.get_data(), Mat::AUTO_STEP);
+    while (cv::waitKey(1)!='q') {
+        // Wait for next set of frames from the camera
+        const rs2::frameset     frameset  = align.process(pipe.wait_for_frames());
+        const rs2::video_frame  color     = frameset.get_color_frame();
+        const rs2::depth_frame  depth     = frameset.get_depth_frame();
+        if (!color || !depth) continue;
 
-        // Search circle
-        Mat men_visual, do_kote_visual;
+        // Convert rs2::frame to cv::Mat
+        const cv::Mat color_mat(get_cv_size(color), CV_8UC3,  (void*)color.get_data(), cv::Mat::AUTO_STEP);
+        const cv::Mat depth_mat(get_cv_size(depth), CV_16UC1, (void*)depth.get_data(), cv::Mat::AUTO_STEP);
+
+        // Search datotsu-parts
+        cv::Mat men_visual, do_kote_visual;
         const auto mdk = get_men_do_kote(color_mat, men_visual, do_kote_visual);
 
         for (auto&& c : mdk.mens) {
@@ -162,16 +191,17 @@ int main(int argc, char * argv[]) try {
           const int radius = cvRound(c[2]);
 
           // Draw circle
-          circle(color_mat, center, radius, cv::Scalar(0,255,255), 2, 8, 0);
+          cv::circle(color_mat, center, radius, cv::Scalar(0,255,255), 2, 8, 0);
+          cv::circle(depth_mat, center, radius, cv::Scalar(255*256), 2, 8, 0);
         }
-        drawContours(color_mat, mdk.dos, -1, cv::Scalar(255,0,0));
-        drawContours(color_mat, mdk.kotes, -1, cv::Scalar(0,255,255));
+        cv::drawContours(color_mat, mdk.dos, -1, cv::Scalar(255,0,0));
+        cv::drawContours(color_mat, mdk.kotes, -1, cv::Scalar(0,255,255));
 
         // Update the window with new data
-        imshow(color_window, color_mat);
-        //imshow(depth_window, depth_mat);
-        imshow(men_window, men_visual);
-        imshow(do_kote_window, do_kote_visual);
+        cv::imshow(color_window, color_mat);
+        cv::imshow(depth_window, depth_mat);
+        cv::imshow(men_window, men_visual);
+        cv::imshow(do_kote_window, do_kote_visual);
     }
 
     return EXIT_SUCCESS;
