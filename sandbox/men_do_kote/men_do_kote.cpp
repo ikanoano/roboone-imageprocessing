@@ -48,14 +48,14 @@ men_do_kote_t get_men_do_kote(
     thresh_far        (far);
   const auto kernel5 = cv::Mat::ones(5, 5, CV_8U)*255;
   const cv::GMat
-    cin, din,
+    bgrin, hsvin, din,
     // depth
     dresize   = cv::gapi::resize(din, cv::Size(), resize_scale, resize_scale),
     dvalid    = cv::gapi::inRange(dresize, thresh_near, thresh_far),
     blur_d    = cv::gapi::gaussianBlur(dvalid, cv::Size(7, 7), 2, 2),
     dmask     = cv::gapi::cmpGE(blur_d, cv::GScalar(32)),
     // color
-    cresize   = cv::gapi::resize(cin, cv::Size(), resize_scale, resize_scale),
+    cresize   = cv::gapi::resize(hsvin, cv::Size(), resize_scale, resize_scale),
     red1      = cv::gapi::inRange(cresize, red_thresh_low1, red_thresh_up1),
     red2      = cv::gapi::inRange(cresize, red_thresh_low2, red_thresh_up2),
     red       = cv::gapi::bitwise_or(red1, red2),
@@ -69,17 +69,19 @@ men_do_kote_t get_men_do_kote(
     blur_y    = cv::gapi::gaussianBlur(masked_y, cv::Size(15, 15), 2, 2),
     bin_b     = cv::gapi::threshold(blur_b, cv::GScalar(16), cv::GScalar(255), cv::THRESH_BINARY),
     bin_y     = cv::gapi::threshold(blur_y, cv::GScalar(16), cv::GScalar(255), cv::THRESH_BINARY),
-    merge     = cv::gapi::merge3(bin_b, bin_y, blur_r);
+    merge     = cv::gapi::merge3(bin_b, bin_y, blur_r),
+    mresize   = cv::gapi::resize(merge, cv::Size(), resize_scale_inv, resize_scale_inv),
+    visual    = cv::gapi::addWeighted(bgrin, 0.9, mresize, 0.5, 0.0);
   // hsv
   //const cv::GMat h, s, v;
   //std::tie(h,s,v) = cv::gapi::split3(cresize);
 
   assert(color_in.size() == depth_in.size());
 
-  cv::GComputation color2mdk(cv::GIn(cin, din), cv::GOut(blur_r, bin_b, bin_y, merge));
+  cv::GComputation color2mdk(cv::GIn(bgrin, hsvin, din), cv::GOut(blur_r, bin_b, bin_y, visual));
 
   cv::Mat men_im, do_im, kote_im;
-  color2mdk.apply(cv::gin(bgr2hsv(color_in), depth_in), cv::gout(men_im, do_im, kote_im, men_do_kote_visual));
+  color2mdk.apply(cv::gin(color_in, bgr2hsv(color_in), depth_in), cv::gout(men_im, do_im, kote_im, men_do_kote_visual));
 
   men_do_kote_t mdk = {{}, {}, {}};
 
@@ -113,6 +115,11 @@ men_do_kote_t get_men_do_kote(
   detect_do_kote(  do_contours, mdk.dos);
   detect_do_kote(kote_contours, mdk.kotes);
 
+  // Re-scale
+  for (auto&& c : mdk.mens) { c *= resize_scale_inv; }
+  for (auto&& d : mdk.dos)  { for (auto&& dp : d) { dp*= resize_scale_inv; } }
+  for (auto&& k : mdk.kotes){ for (auto&& kp : k) { kp*= resize_scale_inv; } }
+
   // Draw MEN
   for (auto&& c : mdk.mens) {
     const cv::Point center(cvRound(c[0]), cvRound(c[1]));
@@ -124,10 +131,6 @@ men_do_kote_t get_men_do_kote(
   cv::drawContours(men_do_kote_visual, mdk.dos,   -1, cv::Scalar(255,255,255));
   cv::drawContours(men_do_kote_visual, mdk.kotes, -1, cv::Scalar(255,255,255));
 
-  // Re-scale
-  for (auto&& c : mdk.mens) { c *= resize_scale_inv; }
-  for (auto&& d : mdk.dos)  { for (auto&& dp : d) { dp*= resize_scale_inv; } }
-  for (auto&& k : mdk.kotes){ for (auto&& kp : k) { kp*= resize_scale_inv; } }
   return mdk;
 }
 
@@ -145,6 +148,7 @@ float get_depth_scale(rs2::device dev) {
 
 int main(int argc, char * argv[]) try {
   constexpr int FPS = 30;
+  std::cout << "version: " << CV_VERSION << std::endl;
   // Declare RealSense pipeline, encapsulating the actual device and sensors
   rs2::pipeline pipe;
   // Create a configuration for configuring the pipeline with a non default profile
@@ -165,15 +169,14 @@ int main(int argc, char * argv[]) try {
   const float depth_scale = dsensor.get_depth_scale();
 
   // Set auto exposure and auto white balance
+  // TODO: how to get camera device?
   //const auto csensor = profile.get_device().first<rs2::sr300_color_sensor>();
   //csensor.set_option(RS2_OPTION_ENABLE_AUTO_EXPOSURE, 1);
   //csensor.set_option(RS2_OPTION_ENABLE_AUTO_WHITE_BALANCE, 1);
   //csensor.set_option(RS2_OPTION_FRAMES_QUEUE_SIZE, 2);
 
   const auto visual_window = "MEN(red) DO(blue) KOTE(green) Visualizer";
-  const auto color_window = "Color";
   const auto depth_window = "Depth";
-  cv::namedWindow(color_window,   cv::WINDOW_AUTOSIZE);
   cv::namedWindow(depth_window,   cv::WINDOW_AUTOSIZE);
   cv::namedWindow(visual_window,  cv::WINDOW_AUTOSIZE);
 
@@ -191,11 +194,11 @@ int main(int argc, char * argv[]) try {
     const cv::Mat depth_mat(get_cv_size(depth), CV_16UC1, (void*)depth.get_data(), cv::Mat::AUTO_STEP);
 
     // Search datotsu-parts
-    cv::Mat visual;
+    cv::Mat visual_mat;
     const auto mdk = get_men_do_kote (
       color_mat, depth_mat,
       1, 1.0/depth_scale,
-      visual
+      visual_mat
     );
 
     for (auto&& c : mdk.mens) {
@@ -203,16 +206,15 @@ int main(int argc, char * argv[]) try {
       const int radius = cvRound(c[2]);
 
       // Draw circle
-      cv::circle(color_mat, center, radius, cv::Scalar(0,255,255), 2, 8, 0);
+      cv::circle(visual_mat, center, radius, cv::Scalar(0,255,255), 2, 8, 0);
       cv::circle(depth_mat, center, radius, cv::Scalar(255*256), 2, 8, 0);
     }
-    cv::drawContours(color_mat, mdk.dos, -1, cv::Scalar(255,0,0));
-    cv::drawContours(color_mat, mdk.kotes, -1, cv::Scalar(0,255,255));
+    cv::drawContours(visual_mat, mdk.dos, -1, cv::Scalar(255,0,0));
+    cv::drawContours(visual_mat, mdk.kotes, -1, cv::Scalar(0,255,255));
 
     // Update the window with new data
-    cv::imshow(color_window, color_mat);
     cv::imshow(depth_window, depth_mat);
-    cv::imshow(visual_window, visual);
+    cv::imshow(visual_window, visual_mat);
   }
 
   return EXIT_SUCCESS;
