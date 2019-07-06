@@ -30,19 +30,21 @@ men_do_kote_t get_men_do_kote(
     const int far,
     cv::Mat& men_do_kote_visual
 ) {
-  const double
+  constexpr double
     resize_scale        = 0.2,
     resize_scale_depth  = resize_scale*2,
     resize_scale_inv    = 1/resize_scale;
+  constexpr int
+    vthick              = 3;
   const cv::GScalar   // HSV threshold for MEN, DO, and KOTE
     //                              H    S    V
-    red_thresh_low1   (cv::Scalar(252, 128,  64)),
+    red_thresh_low1   (cv::Scalar(248, 128,  64)),
     red_thresh_up1    (cv::Scalar(255, 255, 255)),
     red_thresh_low2   (cv::Scalar(  0, 128,  64)),
-    red_thresh_up2    (cv::Scalar(  3, 255, 255)),
+    red_thresh_up2    (cv::Scalar(  8, 255, 255)),
     blue_thresh_low   (cv::Scalar(135, 128,  48)),
-    blue_thresh_up    (cv::Scalar(175, 255, 255)),
-    yellow_thresh_low (cv::Scalar( 28,  96,  64)),
+    blue_thresh_up    (cv::Scalar(180, 255, 255)),
+    yellow_thresh_low (cv::Scalar( 28, 128,  96)),
     yellow_thresh_up  (cv::Scalar( 44, 255, 255));
   const cv::GScalar   // Depth threshold to distinguish opponent from background
     thresh_near       (near),
@@ -54,7 +56,7 @@ men_do_kote_t get_men_do_kote(
     dresize   = cv::gapi::resize(din, cv::Size(), resize_scale_depth, resize_scale_depth, cv::INTER_AREA),
     dvalid    = cv::gapi::inRange(dresize, thresh_near, thresh_far),
     blur_d    = cv::gapi::gaussianBlur(dvalid, cv::Size(7, 7), 2, 2),
-    dmask     = cv::gapi::cmpGE(blur_d, cv::GScalar(32)),
+    dmask     = cv::gapi::cmpGE(blur_d, cv::GScalar(16)),
     // color
     cresize   = cv::gapi::resize(hsvin, cv::Size(), resize_scale, resize_scale, cv::INTER_AREA),
     red1      = cv::gapi::inRange(cresize, red_thresh_low1, red_thresh_up1),
@@ -65,14 +67,14 @@ men_do_kote_t get_men_do_kote(
     masked_r  = cv::gapi::mask(red, dmask),
     masked_b  = cv::gapi::mask(blue, dmask),
     masked_y  = cv::gapi::mask(yellow, dmask),
-    blur_r    = cv::gapi::gaussianBlur(masked_r, cv::Size(11, 11), 2, 2),
-    blur_b    = cv::gapi::gaussianBlur(masked_b, cv::Size(15, 15), 2, 2),
-    blur_y    = cv::gapi::gaussianBlur(masked_y, cv::Size(15, 15), 2, 2),
+    blur_r    = cv::gapi::gaussianBlur(masked_r, cv::Size(15, 15), 2, 2),
+    blur_b    = cv::gapi::gaussianBlur(masked_b, cv::Size( 7,  7), 2, 2),
+    blur_y    = cv::gapi::gaussianBlur(masked_y, cv::Size( 7,  7), 2, 2),
     bin_b     = cv::gapi::threshold(blur_b, cv::GScalar(16), cv::GScalar(255), cv::THRESH_BINARY),
     bin_y     = cv::gapi::threshold(blur_y, cv::GScalar(16), cv::GScalar(255), cv::THRESH_BINARY),
     merge     = cv::gapi::merge3(bin_b, bin_y, blur_r),
     mresize   = cv::gapi::resize(merge, cv::Size(), resize_scale_inv, resize_scale_inv),
-    visual    = cv::gapi::addWeighted(bgrin, 0.9, mresize, 0.5, 0.0);
+    visual    = cv::gapi::addWeighted(bgrin, 1.0, mresize, 1.0, 0.0);
   // hsv
   //const cv::GMat h, s, v;
   //std::tie(h,s,v) = cv::gapi::split3(cresize);
@@ -121,16 +123,16 @@ men_do_kote_t get_men_do_kote(
   for (auto&& d : mdk.dos)  { for (auto&& dp : d) { dp*= resize_scale_inv; } }
   for (auto&& k : mdk.kotes){ for (auto&& kp : k) { kp*= resize_scale_inv; } }
 
+  // Vidualization
   // Draw MEN
   for (auto&& c : mdk.mens) {
     const cv::Point center(cvRound(c[0]), cvRound(c[1]));
     const int radius = cvRound(c[2]);
-    circle(men_do_kote_visual, center, radius, cv::Scalar(255,255,255), 1, 8, 0);
+    circle(men_do_kote_visual, center, radius, cv::Scalar(224,224,255), vthick, 8, 0);
   }
-
   // Draw DO and KOTE
-  cv::drawContours(men_do_kote_visual, mdk.dos,   -1, cv::Scalar(255,255,255));
-  cv::drawContours(men_do_kote_visual, mdk.kotes, -1, cv::Scalar(255,255,255));
+  cv::drawContours(men_do_kote_visual, mdk.dos,   -1, cv::Scalar(255,224,224), vthick);
+  cv::drawContours(men_do_kote_visual, mdk.kotes, -1, cv::Scalar(255,255,224), vthick);
 
   return mdk;
 }
@@ -207,20 +209,9 @@ int main(int argc, char * argv[]) try {
     cv::Mat visual_mat;
     const auto mdk = get_men_do_kote (
       color_mat, depth_mat,
-      1, 1.0/depth_scale,
+      1, 2.0/depth_scale,
       visual_mat
     );
-
-    for (auto&& c : mdk.mens) {
-      const cv::Point center(cvRound(c[0]), cvRound(c[1]));
-      const int radius = cvRound(c[2]);
-
-      // Draw circle
-      cv::circle(visual_mat, center, radius, cv::Scalar(0,255,255), 2, 8, 0);
-      cv::circle(depth_mat, center, radius, cv::Scalar(255*256), 2, 8, 0);
-    }
-    cv::drawContours(visual_mat, mdk.dos, -1, cv::Scalar(255,0,0));
-    cv::drawContours(visual_mat, mdk.kotes, -1, cv::Scalar(0,255,255));
 
     // Update the window with new data
     cv::imshow(depth_window, depth_mat);
