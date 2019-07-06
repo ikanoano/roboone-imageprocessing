@@ -31,8 +31,9 @@ men_do_kote_t get_men_do_kote(
     cv::Mat& men_do_kote_visual
 ) {
   const double
-    resize_scale = 0.2,
-    resize_scale_inv = 1/resize_scale;
+    resize_scale        = 0.2,
+    resize_scale_depth  = resize_scale*2,
+    resize_scale_inv    = 1/resize_scale;
   const cv::GScalar   // HSV threshold for MEN, DO, and KOTE
     //                              H    S    V
     red_thresh_low1   (cv::Scalar(252, 128,  64)),
@@ -50,12 +51,12 @@ men_do_kote_t get_men_do_kote(
   const cv::GMat
     bgrin, hsvin, din,
     // depth
-    dresize   = cv::gapi::resize(din, cv::Size(), resize_scale, resize_scale),
+    dresize   = cv::gapi::resize(din, cv::Size(), resize_scale_depth, resize_scale_depth, cv::INTER_AREA),
     dvalid    = cv::gapi::inRange(dresize, thresh_near, thresh_far),
     blur_d    = cv::gapi::gaussianBlur(dvalid, cv::Size(7, 7), 2, 2),
     dmask     = cv::gapi::cmpGE(blur_d, cv::GScalar(32)),
     // color
-    cresize   = cv::gapi::resize(hsvin, cv::Size(), resize_scale, resize_scale),
+    cresize   = cv::gapi::resize(hsvin, cv::Size(), resize_scale, resize_scale, cv::INTER_AREA),
     red1      = cv::gapi::inRange(cresize, red_thresh_low1, red_thresh_up1),
     red2      = cv::gapi::inRange(cresize, red_thresh_low2, red_thresh_up2),
     red       = cv::gapi::bitwise_or(red1, red2),
@@ -76,7 +77,7 @@ men_do_kote_t get_men_do_kote(
   //const cv::GMat h, s, v;
   //std::tie(h,s,v) = cv::gapi::split3(cresize);
 
-  assert(color_in.size() == depth_in.size());
+  assert(color_in.size() == depth_in.size()*2);
 
   cv::GComputation color2mdk(cv::GIn(bgrin, hsvin, din), cv::GOut(blur_r, bin_b, bin_y, visual));
 
@@ -145,10 +146,11 @@ float get_depth_scale(rs2::device dev) {
   throw std::runtime_error("Device does not have a depth sensor");
 }
 
-
 int main(int argc, char * argv[]) try {
   constexpr int FPS = 30;
-  std::cout << "version: " << CV_VERSION << std::endl;
+  std::cout << "CV version: " << CV_VERSION << std::endl;
+  std::cout << "RS version: " << RS2_API_VERSION_STR << std::endl;
+
   // Declare RealSense pipeline, encapsulating the actual device and sensors
   rs2::pipeline pipe;
   // Create a configuration for configuring the pipeline with a non default profile
@@ -158,12 +160,18 @@ int main(int argc, char * argv[]) try {
   cfg.enable_stream(RS2_STREAM_COLOR, RS2_FORMAT_BGR8, FPS);
   cfg.enable_stream(RS2_STREAM_DEPTH, RS2_FORMAT_Z16,  FPS);
 
+  // filters
+  rs2::decimation_filter dec_filter;
+  dec_filter.set_option(RS2_OPTION_FILTER_MAGNITUDE, 2);
+  rs2::spatial_filter spat_filter;
+  spat_filter.set_option(RS2_OPTION_HOLES_FILL, 1); // 1 = 2 pix-radius fill
+
   // Instruct pipeline to start streaming with the requested configuration
   auto profile = pipe.start(cfg);
 
   // Set short_range accurate preset
   const auto dsensor = profile.get_device().first<rs2::depth_sensor>();
-  dsensor.set_option(RS2_OPTION_VISUAL_PRESET, RS2_SR300_VISUAL_PRESET_SHORT_RANGE);
+  dsensor.set_option(RS2_OPTION_VISUAL_PRESET, RS2_SR300_VISUAL_PRESET_MID_RANGE);
   dsensor.set_option(RS2_OPTION_MOTION_RANGE, 2);
   dsensor.set_option(RS2_OPTION_FRAMES_QUEUE_SIZE, 2);
   const float depth_scale = dsensor.get_depth_scale();
@@ -184,10 +192,12 @@ int main(int argc, char * argv[]) try {
 
   while (cv::waitKey(1)!='q') {
     // Wait for next set of frames from the camera
-    const rs2::frameset     frameset  = align.process(pipe.wait_for_frames());
-    const rs2::video_frame  color     = frameset.get_color_frame();
-    const rs2::depth_frame  depth     = frameset.get_depth_frame();
+    rs2::frameset     frameset  = align.process(pipe.wait_for_frames());
+    rs2::video_frame  color     = frameset.get_color_frame();
+    rs2::depth_frame  depth     = frameset.get_depth_frame();
     if (!color || !depth) continue;
+    depth = depth.apply_filter(dec_filter);
+    depth = depth.apply_filter(spat_filter);
 
     // Convert rs2::frame to cv::Mat
     const cv::Mat color_mat(get_cv_size(color), CV_8UC3,  (void*)color.get_data(), cv::Mat::AUTO_STEP);
