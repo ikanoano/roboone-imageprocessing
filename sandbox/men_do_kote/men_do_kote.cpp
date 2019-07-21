@@ -2,11 +2,14 @@
 // Copyright(c) 2017 Intel Corporation. All Rights Reserved.
 
 #include <librealsense2/rs.hpp>
+#include <librealsense2/rsutil.h>
 #include <opencv4/opencv2/opencv.hpp>
 #include <opencv4/opencv2/gapi.hpp>
 #include <opencv4/opencv2/gapi/core.hpp>
 #include <opencv4/opencv2/gapi/imgproc.hpp>
+#include <stdio.h>
 #include <vector>
+#include <array>
 #include <numeric>
 
 // Query frame size (width and height)
@@ -18,6 +21,11 @@ struct men_do_kote_t {
   std::vector<std::vector<cv::Point> > dos;
   std::vector<std::vector<cv::Point> > kotes;
 };
+std::array<int, 2> contour_center(std::vector<cv::Point> contour) {
+  float x=0, y=0;
+  for (auto&& p : contour) { x+= p.x; y+=p.y; }
+  return {(int)(x/contour.size()), (int)(y/contour.size())};
+}
 cv::Mat bgr2hsv(const cv::Mat& bgr) {
   cv::Mat hsv;
   cv::cvtColor(bgr, hsv, cv::COLOR_BGR2HSV_FULL);
@@ -148,6 +156,23 @@ float get_depth_scale(rs2::device dev) {
   throw std::runtime_error("Device does not have a depth sensor");
 }
 
+bool point_3d(float point[3], const rs2::depth_frame& frame, int x, int y) {
+    constexpr int ds[][2] = {{0,0}, {0,1}, {0,-1}, {1,0}, {-1,0}};
+    float dist;
+    for (auto&& d : ds) {
+      dist = frame.get_distance(x+d[0], y+d[1]);
+      if(dist != 0.0f /*&& dist != -0.0f*/) break;
+    }
+    if(dist==0.0f) return false;
+
+    // Deproject from pixel to point in 3D
+    float xy[2] = {(float)x, (float)y};
+    const rs2_intrinsics intr =
+      frame.get_profile().as<rs2::video_stream_profile>().get_intrinsics();
+    rs2_deproject_pixel_to_point(point, &intr, xy, dist);
+    return true;
+}
+
 int main(int argc, char * argv[]) try {
   constexpr int FPS = 30;
   std::cout << "CV version: " << CV_VERSION << std::endl;
@@ -163,8 +188,9 @@ int main(int argc, char * argv[]) try {
   cfg.enable_stream(RS2_STREAM_DEPTH, RS2_FORMAT_Z16,  FPS);
 
   // filters
+  constexpr int dec_magnitude = 2;
   rs2::decimation_filter dec_filter;
-  dec_filter.set_option(RS2_OPTION_FILTER_MAGNITUDE, 2);
+  dec_filter.set_option(RS2_OPTION_FILTER_MAGNITUDE, dec_magnitude);
   rs2::spatial_filter spat_filter;
   spat_filter.set_option(RS2_OPTION_HOLES_FILL, 1); // 1 = 2 pix-radius fill
 
@@ -212,6 +238,18 @@ int main(int argc, char * argv[]) try {
       1, 2.0/depth_scale,
       visual_mat
     );
+
+    // annotate
+    // TODO: when mens.size > 1 ?
+    for (auto&& men : mdk.mens) {
+      float crd[3];
+      char buf[128];
+      if(!point_3d(crd, depth, men[0]/dec_magnitude, men[1]/dec_magnitude)) continue;
+      sprintf(buf, "(%5.3f, %5.3f, %5.3f)", crd[0], crd[1], crd[2]);
+      std::cout << buf << std::endl;
+      cv::putText(visual_mat, buf, cv::Point(men[0], men[1]), cv::FONT_HERSHEY_SIMPLEX, 1, cv::Scalar(  0,  0,  0), 7, cv::LINE_AA);
+      cv::putText(visual_mat, buf, cv::Point(men[0], men[1]), cv::FONT_HERSHEY_SIMPLEX, 1, cv::Scalar(255,255,255), 2, cv::LINE_AA);
+    }
 
     // Update the window with new data
     cv::imshow(depth_window, depth_mat);
