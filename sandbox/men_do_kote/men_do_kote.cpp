@@ -1,197 +1,186 @@
 // License: Apache 2.0. See LICENSE file in root directory.
 // Copyright(c) 2017 Intel Corporation. All Rights Reserved.
 
-#include <librealsense2/rs.hpp>
 #include <librealsense2/rsutil.h>
-#include <opencv4/opencv2/opencv.hpp>
-#include <opencv4/opencv2/gapi.hpp>
-#include <opencv4/opencv2/gapi/core.hpp>
-#include <opencv4/opencv2/gapi/imgproc.hpp>
-#include <stdio.h>
-#include <vector>
-#include <array>
+#include <opencv2/opencv.hpp>
+#include <opencv2/gapi/core.hpp>
+#include <opencv2/gapi/imgproc.hpp>
 #include <numeric>
+#include <tuple>
+#include "men_do_kote.hpp"
 
-// Query frame size (width and height)
-cv::Size get_cv_size(const rs2::video_frame &f) {
-  return cv::Size(f.get_width(), f.get_height());
-}
-struct men_do_kote_t {
-  std::vector<cv::Vec3f> mens;
-  std::vector<std::vector<cv::Point> > dos;
-  std::vector<std::vector<cv::Point> > kotes;
-};
-std::array<int, 2> contour_center(std::vector<cv::Point> contour) {
-  float x=0, y=0;
-  for (auto&& p : contour) { x+= p.x; y+=p.y; }
-  return {(int)(x/contour.size()), (int)(y/contour.size())};
-}
-cv::Mat bgr2hsv(const cv::Mat& bgr) {
-  cv::Mat hsv;
-  cv::cvtColor(bgr, hsv, cv::COLOR_BGR2HSV_FULL);
-  return hsv;
-}
-men_do_kote_t get_men_do_kote(
-    const cv::Mat& color_in,
-    const cv::Mat& depth_in,
-    const int near,
-    const int far,
-    cv::Mat& men_do_kote_visual
+Mikiri::men_do_kote_t Mikiri::get_men_do_kote(
+    cv::Mat&  men_do_kote_visual
 ) {
-  constexpr double
-    resize_scale        = 0.2,
-    resize_scale_depth  = resize_scale*2,
-    resize_scale_inv    = 1/resize_scale;
-  constexpr int
-    vthick              = 3;
-  const cv::GScalar   // HSV threshold for MEN, DO, and KOTE
-    //                              H    S    V
-    red_thresh_low1   (cv::Scalar(248, 128,  64)),
-    red_thresh_up1    (cv::Scalar(255, 255, 255)),
-    red_thresh_low2   (cv::Scalar(  0, 128,  64)),
-    red_thresh_up2    (cv::Scalar(  8, 255, 255)),
-    blue_thresh_low   (cv::Scalar(135, 128,  48)),
-    blue_thresh_up    (cv::Scalar(180, 255, 255)),
-    yellow_thresh_low (cv::Scalar( 28, 128,  96)),
-    yellow_thresh_up  (cv::Scalar( 44, 255, 255));
-  const cv::GScalar   // Depth threshold to distinguish opponent from background
-    thresh_near       (near),
-    thresh_far        (far);
-  const auto kernel5 = cv::Mat::ones(5, 5, CV_8U)*255;
-  const cv::GMat
-    bgrin, hsvin, din,
-    // depth
-    dresize   = cv::gapi::resize(din, cv::Size(), resize_scale_depth, resize_scale_depth, cv::INTER_AREA),
-    dvalid    = cv::gapi::inRange(dresize, thresh_near, thresh_far),
-    blur_d    = cv::gapi::gaussianBlur(dvalid, cv::Size(7, 7), 2, 2),
-    dmask     = cv::gapi::cmpGE(blur_d, cv::GScalar(16)),
-    // color
-    cresize   = cv::gapi::resize(hsvin, cv::Size(), resize_scale, resize_scale, cv::INTER_AREA),
-    red1      = cv::gapi::inRange(cresize, red_thresh_low1, red_thresh_up1),
-    red2      = cv::gapi::inRange(cresize, red_thresh_low2, red_thresh_up2),
-    red       = cv::gapi::bitwise_or(red1, red2),
-    blue      = cv::gapi::inRange(cresize, blue_thresh_low , blue_thresh_up),
-    yellow    = cv::gapi::inRange(cresize, yellow_thresh_low, yellow_thresh_up),
-    masked_r  = cv::gapi::mask(red, dmask),
-    masked_b  = cv::gapi::mask(blue, dmask),
-    masked_y  = cv::gapi::mask(yellow, dmask),
-    blur_r    = cv::gapi::gaussianBlur(masked_r, cv::Size(15, 15), 2, 2),
-    blur_b    = cv::gapi::gaussianBlur(masked_b, cv::Size( 7,  7), 2, 2),
-    blur_y    = cv::gapi::gaussianBlur(masked_y, cv::Size( 7,  7), 2, 2),
-    bin_b     = cv::gapi::threshold(blur_b, cv::GScalar(16), cv::GScalar(255), cv::THRESH_BINARY),
-    bin_y     = cv::gapi::threshold(blur_y, cv::GScalar(16), cv::GScalar(255), cv::THRESH_BINARY),
-    merge     = cv::gapi::merge3(bin_b, bin_y, blur_r),
-    mresize   = cv::gapi::resize(merge, cv::Size(), resize_scale_inv, resize_scale_inv),
-    visual    = cv::gapi::addWeighted(bgrin, 1.0, mresize, 1.0, 0.0);
-  // hsv
-  //const cv::GMat h, s, v;
-  //std::tie(h,s,v) = cv::gapi::split3(cresize);
+  constexpr int vthick = 3;
 
-  assert(color_in.size() == depth_in.size()*2);
+  // Wait for next set of frames from the camera
+  rs2::frameset    frameset  = align.process(pipe.wait_for_frames());
+  rs2::video_frame color_rs  = frameset.get_color_frame();
+  rs2::depth_frame depth_rs  = frameset.get_depth_frame();
+  while(!color_rs || !depth_rs) {
+    // TODO: dirty
+    frameset  = align.process(pipe.wait_for_frames());
+    color_rs  = frameset.get_color_frame();
+    depth_rs  = frameset.get_depth_frame();
+  }
+  depth_rs = depth_rs.apply_filter(dec_filter);
+  depth_rs = depth_rs.apply_filter(spat_filter);
 
-  cv::GComputation color2mdk(cv::GIn(bgrin, hsvin, din), cv::GOut(blur_r, bin_b, bin_y, visual));
+  // Convert rs2::frame to cv::Mat
+  const cv::Mat
+    color_in(get_cv_size(color_rs), CV_8UC3,  (void*)color_rs.get_data(), cv::Mat::AUTO_STEP),
+    depth_in(get_cv_size(depth_rs), CV_16UC1, (void*)depth_rs.get_data(), cv::Mat::AUTO_STEP);
 
-  cv::Mat men_im, do_im, kote_im;
-  color2mdk.apply(cv::gin(color_in, bgr2hsv(color_in), depth_in), cv::gout(men_im, do_im, kote_im, men_do_kote_visual));
 
-  men_do_kote_t mdk = {{}, {}, {}};
+  assert(color_in.size() == depth_in.size()*dec_magnitude);
+
+  cv::Mat men_ext, do_ext, kote_ext;
+  color2mdk.apply(
+    cv::gin(color_in, bgr2hsv(color_in), depth_in),
+    cv::gout(men_ext, do_ext, kote_ext, men_do_kote_visual)
+  );
+
+  std::vector<target_cand_t>  mens, dos, kotes;
+  const auto annotate = [&](const char buf[128], cv::Point p) {
+    cv::putText(men_do_kote_visual, buf, p, cv::FONT_HERSHEY_SIMPLEX, 1, cv::Scalar(  0,  0,  0), 7, cv::LINE_AA);
+    cv::putText(men_do_kote_visual, buf, p, cv::FONT_HERSHEY_SIMPLEX, 1, cv::Scalar(255,255,255), 2, cv::LINE_AA);
+  };
 
   // detect MEN
-  const int dp=2, minDist=men_im.rows/8, canny_thresh_high=32, thresh_find=30, minRadius=6, maxRadius=30;
+  std::vector<cv::Vec3f>      mens_uvr; // { ((x,y), r), ... }
+  const int dp=2, minDist=men_ext.rows/8, canny_thresh_high=32, thresh_find=30, minRadius=6, maxRadius=30;
   HoughCircles(
-      men_im, mdk.mens, cv::HOUGH_GRADIENT, dp,
+      men_ext, mens_uvr, cv::HOUGH_GRADIENT, dp,
       minDist, canny_thresh_high, thresh_find, minRadius, maxRadius);
+  for (const auto& men_uvr : mens_uvr) {
+    // Re-scale
+    const auto men_uvr_color = men_uvr * resize_scale_inv;
+    const auto men_uvr_depth = men_uvr * resize_scale_inv_depth;
+    const cv::Point center(cvRound(men_uvr_color[0]), cvRound(men_uvr_color[1]));
+    const int radius = cvRound(men_uvr_color[2]);
+    const int area = radius*radius*3;
+
+    // Add
+    float xyz[3];
+    if(!uv_to_xyz(xyz, depth_rs, men_uvr_depth[0], men_uvr_depth[1])) continue;
+    mens.push_back({{xyz[0], xyz[1], xyz[2]}, area});
+
+    // Draw
+    char buf[128];
+    cv::circle(men_do_kote_visual, center, radius, cv::Scalar(224,224,255), vthick, 8, 0);
+    sprintf(buf, "(%5.3f, %5.3f, %5.3f)", xyz[0], xyz[1], xyz[2]);
+    annotate(buf, center);
+  }
 
   // detect DO and KOTE
-  typedef std::vector<std::vector<cv::Point> > contours_t;
-  contours_t do_contours, kote_contours;
-  findContours(  do_im,   do_contours, cv::RETR_LIST, cv::CHAIN_APPROX_SIMPLE);
-  findContours(kote_im, kote_contours, cv::RETR_LIST, cv::CHAIN_APPROX_SIMPLE);
+  const auto detect_do_kote = [&](const auto &ext, auto &parts, const auto &color) {
+    std::vector<std::vector<cv::Point> > contours;
+    cv::findContours(ext, contours, cv::RETR_LIST, cv::CHAIN_APPROX_SIMPLE);
 
-  const auto detect_do_kote = [](const auto &contours, auto &parts) {
-    for (auto&& contour : contours) {
+    for (const auto& contour : contours) {
       // Approximate curves with lines
       const auto arc = cv::arcLength(contour, true);
-      std::vector<cv::Point> approx;
+      const std::vector<cv::Point> approx;
       cv::approxPolyDP(cv::Mat(contour), approx, 0.05*arc, true);
+
       // Prune if area is too small
-      if(cv::contourArea(approx) < 30) continue;
-      // Prune if curve is not a rectangle
+      const int area = cv::contourArea(approx);
+      if(area < 25) continue;
+      // Prune if curve is not like a rectangle
       if(approx.size() > 5) continue;
-      // This is DO or KOTE
-      parts.push_back(approx);
+
+      // Re-scale
+      const cv::Point
+        center        = contour_center(approx),
+        center_color  = center * resize_scale_inv,
+        center_depth  = center * resize_scale_inv_depth;
+
+      // Add
+      float xyz[3];
+      if(!uv_to_xyz(xyz, depth_rs, center_depth.x, center_depth.y)) continue;
+      parts.push_back({
+        {xyz[0], xyz[1], xyz[2]},
+        (int)(area*resize_scale_inv*resize_scale_inv)
+      });
+
+      // Draw
+      std::vector<cv::Point> approxr;
+      for (auto&& a : approx) { approxr.push_back(a*resize_scale_inv); }
+      cv::drawContours(men_do_kote_visual, {approx}, -1, color, vthick);
     }
   };
 
-  detect_do_kote(  do_contours, mdk.dos);
-  detect_do_kote(kote_contours, mdk.kotes);
+  detect_do_kote(  do_ext, dos,   cv::Scalar(255,224,224));
+  detect_do_kote(kote_ext, kotes, cv::Scalar(255,255,224));
 
-  // Re-scale
-  for (auto&& c : mdk.mens) { c *= resize_scale_inv; }
-  for (auto&& d : mdk.dos)  { for (auto&& dp : d) { dp*= resize_scale_inv; } }
-  for (auto&& k : mdk.kotes){ for (auto&& kp : k) { kp*= resize_scale_inv; } }
-
-  // Vidualization
-  // Draw MEN
-  for (auto&& c : mdk.mens) {
-    const cv::Point center(cvRound(c[0]), cvRound(c[1]));
-    const int radius = cvRound(c[2]);
-    circle(men_do_kote_visual, center, radius, cv::Scalar(224,224,255), vthick, 8, 0);
-  }
-  // Draw DO and KOTE
-  cv::drawContours(men_do_kote_visual, mdk.dos,   -1, cv::Scalar(255,224,224), vthick);
-  cv::drawContours(men_do_kote_visual, mdk.kotes, -1, cv::Scalar(255,255,224), vthick);
-
-  return mdk;
+  return {mens, dos, kotes};
 }
 
-float get_depth_scale(rs2::device dev) {
-  // Go over the device's sensors
-  for (rs2::sensor& sensor : dev.query_sensors()) {
-    // Check if the sensor if a depth sensor
-    if (rs2::depth_sensor dpt = sensor.as<rs2::depth_sensor>()) {
-      return dpt.get_depth_scale();
-    }
-  }
-  throw std::runtime_error("Device does not have a depth sensor");
-}
-
-bool point_3d(float point[3], const rs2::depth_frame& frame, int x, int y) {
+bool Mikiri::uv_to_xyz(float xyz[3], const rs2::depth_frame& frame, int u, int v) {
     constexpr int ds[][2] = {{0,0}, {0,1}, {0,-1}, {1,0}, {-1,0}};
     float dist;
     for (auto&& d : ds) {
-      dist = frame.get_distance(x+d[0], y+d[1]);
+      dist = frame.get_distance(u+d[0], v+d[1]);
       if(dist != 0.0f /*&& dist != -0.0f*/) break;
     }
     if(dist==0.0f) return false;
 
-    // Deproject from pixel to point in 3D
-    float xy[2] = {(float)x, (float)y};
+    // Deproject from pixel to xyz in 3D
+    float xy[2] = {(float)u, (float)v};
     const rs2_intrinsics intr =
       frame.get_profile().as<rs2::video_stream_profile>().get_intrinsics();
-    rs2_deproject_pixel_to_point(point, &intr, xy, dist);
+    rs2_deproject_pixel_to_point(xyz, &intr, xy, dist);
     return true;
 }
 
-int main(int argc, char * argv[]) try {
-  constexpr int FPS = 30;
-  std::cout << "CV version: " << CV_VERSION << std::endl;
+Mikiri::Mikiri(int fps) :
+  FPS(fps),
+  //                              H    S    V
+  red_thresh_low1   (cv::Scalar(248, 128,  64)),
+  red_thresh_up1    (cv::Scalar(255, 255, 255)),
+  red_thresh_low2   (cv::Scalar(  0, 128,  64)),
+  red_thresh_up2    (cv::Scalar(  8, 255, 255)),
+  blue_thresh_low   (cv::Scalar(135, 128,  48)),
+  blue_thresh_up    (cv::Scalar(180, 255, 255)),
+  yellow_thresh_low (cv::Scalar( 28, 128,  96)),
+  yellow_thresh_up  (cv::Scalar( 44, 255, 255)),
+  // depth
+  dresize   (cv::gapi::resize(din, cv::Size(), resize_scale_depth, resize_scale_depth, cv::INTER_AREA)),
+  dvalid    (cv::gapi::cmpGT(dresize, cv::GScalar(0))),
+  blur_d    (cv::gapi::gaussianBlur(dvalid, cv::Size(7, 7), 2, 2)),
+  dmask     (cv::gapi::cmpGE(blur_d, cv::GScalar(16))),
+  // color
+  cresize   (cv::gapi::resize(hsvin, cv::Size(), resize_scale, resize_scale, cv::INTER_AREA)),
+  red1      (cv::gapi::inRange(cresize, red_thresh_low1, red_thresh_up1)),
+  red2      (cv::gapi::inRange(cresize, red_thresh_low2, red_thresh_up2)),
+  red       (cv::gapi::bitwise_or(red1, red2)),
+  blue      (cv::gapi::inRange(cresize, blue_thresh_low , blue_thresh_up)),
+  yellow    (cv::gapi::inRange(cresize, yellow_thresh_low, yellow_thresh_up)),
+  masked_r  (cv::gapi::mask(red, dmask)),
+  masked_b  (cv::gapi::mask(blue, dmask)),
+  masked_y  (cv::gapi::mask(yellow, dmask)),
+  blur_r    (cv::gapi::gaussianBlur(masked_r, cv::Size(15, 15), 2, 2)),
+  blur_b    (cv::gapi::gaussianBlur(masked_b, cv::Size( 7,  7), 2, 2)),
+  blur_y    (cv::gapi::gaussianBlur(masked_y, cv::Size( 7,  7), 2, 2)),
+  bin_b     (cv::gapi::threshold(blur_b, cv::GScalar(16), cv::GScalar(255), cv::THRESH_BINARY)),
+  bin_y     (cv::gapi::threshold(blur_y, cv::GScalar(16), cv::GScalar(255), cv::THRESH_BINARY)),
+  merge     (cv::gapi::merge3(bin_b, bin_y, blur_r)),
+  mresize   (cv::gapi::resize(merge, cv::Size(), resize_scale_inv, resize_scale_inv)),
+  visual    (cv::gapi::addWeighted(bgrin, 1.0, mresize, 1.0, 0.0)),
+  align     (RS2_STREAM_COLOR),
+  color2mdk (cv::GComputation(cv::GIn(bgrin, hsvin, din), cv::GOut(blur_r, bin_b, bin_y, visual)))
+{
+  std::cout << "CV version: " << CV_VERSION          << std::endl;
   std::cout << "RS version: " << RS2_API_VERSION_STR << std::endl;
 
-  // Declare RealSense pipeline, encapsulating the actual device and sensors
-  rs2::pipeline pipe;
-  // Create a configuration for configuring the pipeline with a non default profile
-  rs2::config cfg;
-  // Add desired streams to configuration
+  // video stream
   cfg.disable_all_streams();
-  cfg.enable_stream(RS2_STREAM_COLOR, RS2_FORMAT_BGR8, FPS);
-  cfg.enable_stream(RS2_STREAM_DEPTH, RS2_FORMAT_Z16,  FPS);
+  cfg.enable_stream(RS2_STREAM_COLOR, RS2_FORMAT_BGR8, fps);
+  cfg.enable_stream(RS2_STREAM_DEPTH, RS2_FORMAT_Z16,  fps);
 
   // filters
-  constexpr int dec_magnitude = 2;
-  rs2::decimation_filter dec_filter;
   dec_filter.set_option(RS2_OPTION_FILTER_MAGNITUDE, dec_magnitude);
-  rs2::spatial_filter spat_filter;
   spat_filter.set_option(RS2_OPTION_HOLES_FILL, 1); // 1 = 2 pix-radius fill
 
   // Instruct pipeline to start streaming with the requested configuration
@@ -202,7 +191,7 @@ int main(int argc, char * argv[]) try {
   dsensor.set_option(RS2_OPTION_VISUAL_PRESET, RS2_SR300_VISUAL_PRESET_MID_RANGE);
   dsensor.set_option(RS2_OPTION_MOTION_RANGE, 2);
   dsensor.set_option(RS2_OPTION_FRAMES_QUEUE_SIZE, 2);
-  const float depth_scale = dsensor.get_depth_scale();
+  depth_scale = dsensor.get_depth_scale();
 
   // Set auto exposure and auto white balance
   // TODO: how to get camera device?
@@ -210,59 +199,7 @@ int main(int argc, char * argv[]) try {
   //csensor.set_option(RS2_OPTION_ENABLE_AUTO_EXPOSURE, 1);
   //csensor.set_option(RS2_OPTION_ENABLE_AUTO_WHITE_BALANCE, 1);
   //csensor.set_option(RS2_OPTION_FRAMES_QUEUE_SIZE, 2);
-
-  const auto visual_window = "MEN(red) DO(blue) KOTE(green) Visualizer";
-  const auto depth_window = "Depth";
-  cv::namedWindow(depth_window,   cv::WINDOW_AUTOSIZE);
-  cv::namedWindow(visual_window,  cv::WINDOW_AUTOSIZE);
-
-  rs2::align  align(RS2_STREAM_COLOR);
-
-  while (cv::waitKey(1)!='q') {
-    // Wait for next set of frames from the camera
-    rs2::frameset     frameset  = align.process(pipe.wait_for_frames());
-    rs2::video_frame  color     = frameset.get_color_frame();
-    rs2::depth_frame  depth     = frameset.get_depth_frame();
-    if (!color || !depth) continue;
-    depth = depth.apply_filter(dec_filter);
-    depth = depth.apply_filter(spat_filter);
-
-    // Convert rs2::frame to cv::Mat
-    const cv::Mat color_mat(get_cv_size(color), CV_8UC3,  (void*)color.get_data(), cv::Mat::AUTO_STEP);
-    const cv::Mat depth_mat(get_cv_size(depth), CV_16UC1, (void*)depth.get_data(), cv::Mat::AUTO_STEP);
-
-    // Search datotsu-parts
-    cv::Mat visual_mat;
-    const auto mdk = get_men_do_kote (
-      color_mat, depth_mat,
-      1, 2.0/depth_scale,
-      visual_mat
-    );
-
-    // annotate
-    // TODO: when mens.size > 1 ?
-    for (auto&& men : mdk.mens) {
-      float crd[3];
-      char buf[128];
-      if(!point_3d(crd, depth, men[0]/dec_magnitude, men[1]/dec_magnitude)) continue;
-      sprintf(buf, "(%5.3f, %5.3f, %5.3f)", crd[0], crd[1], crd[2]);
-      std::cout << buf << std::endl;
-      cv::putText(visual_mat, buf, cv::Point(men[0], men[1]), cv::FONT_HERSHEY_SIMPLEX, 1, cv::Scalar(  0,  0,  0), 7, cv::LINE_AA);
-      cv::putText(visual_mat, buf, cv::Point(men[0], men[1]), cv::FONT_HERSHEY_SIMPLEX, 1, cv::Scalar(255,255,255), 2, cv::LINE_AA);
-    }
-
-    // Update the window with new data
-    cv::imshow(depth_window, depth_mat);
-    cv::imshow(visual_window, visual_mat);
-  }
-
-  return EXIT_SUCCESS;
-} catch (const rs2::error & e) {
-  std::cerr << "RealSense error calling " << e.get_failed_function() << "(" << e.get_failed_args() << "):\n    " << e.what() << std::endl;
-  return EXIT_FAILURE;
-} catch (const std::exception& e) {
-  std::cerr << e.what() << std::endl;
-  return EXIT_FAILURE;
 }
+
 
 
