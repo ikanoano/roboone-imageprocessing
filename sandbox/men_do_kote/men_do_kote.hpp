@@ -48,7 +48,6 @@ private:
 
   static cv::Size                 get_cv_size(const rs2::video_frame &f);
   static cv::Point2f              contour_center(const std::vector<cv::Point> &contour);
-  static cv::Mat                  bgr2hsv(const cv::Mat &bgr);
   static cv::GComputation         gen_computation();
 
   static constexpr double
@@ -66,12 +65,6 @@ inline cv::Point2f Mikiri::contour_center(const std::vector<cv::Point> &contour)
   cv::Point sum(0, 0);
   for (auto&& p : contour) { sum += p; }
   return ((cv::Point2f)sum)/((int)contour.size());
-}
-
-inline cv::Mat Mikiri::bgr2hsv(const cv::Mat &bgr) {
-  cv::Mat hsv;
-  cv::cvtColor(bgr, hsv, cv::COLOR_BGR2HSV_FULL);
-  return hsv;
 }
 
 #endif /* end of include guard */

@@ -36,7 +36,7 @@ Mikiri::men_do_kote_t Mikiri::get_men_do_kote(
 
   cv::Mat men_ext, do_ext, kote_ext;
   color2mdk.apply(
-    cv::gin(color_in, bgr2hsv(color_in), depth_in),
+    cv::gin(color_in, depth_in),
     cv::gout(men_ext, do_ext, kote_ext, men_do_kote_visual)
   );
 
@@ -171,16 +171,20 @@ cv::GComputation Mikiri::gen_computation() {
   // Initialize GComputation
   const cv::GScalar   // HSV threshold for MEN, DO, and KOTE
     //                              H    S    V
-    red_thresh_low1   (cv::Scalar(248, 128,  64)),
-    red_thresh_up1    (cv::Scalar(255, 255, 255)),
+    red_thresh_low1   (cv::Scalar(174, 128,  64)),
+    red_thresh_up1    (cv::Scalar(180, 255, 255)),
     red_thresh_low2   (cv::Scalar(  0, 128,  64)),
-    red_thresh_up2    (cv::Scalar(  8, 255, 255)),
-    blue_thresh_low   (cv::Scalar(135, 128,  48)),
-    blue_thresh_up    (cv::Scalar(180, 255, 255)),
-    yellow_thresh_low (cv::Scalar( 28, 128,  96)),
-    yellow_thresh_up  (cv::Scalar( 44, 255, 255));
+    red_thresh_up2    (cv::Scalar(  6, 255, 255)),
+    blue_thresh_low   (cv::Scalar( 95, 128,  48)),
+    blue_thresh_up    (cv::Scalar(126, 255, 255)),
+    yellow_thresh_low (cv::Scalar( 20, 128,  96)),
+    yellow_thresh_up  (cv::Scalar( 30, 255, 255));
   const cv::GMat
-    bgrin, hsvin, din,
+    bgrin, din;
+  const auto [b, g, r] = cv::gapi::split3(bgrin);
+  const cv::GMat
+    // hsv
+    hsvin     (cv::gapi::RGB2HSV(cv::gapi::merge3(r, g, b))),
     // depth
     dresize   (cv::gapi::resize(din, cv::Size(), resize_scale_depth, resize_scale_depth, cv::INTER_AREA)),
     dvalid    (cv::gapi::cmpGT(dresize, cv::GScalar(0))),
@@ -204,12 +208,9 @@ cv::GComputation Mikiri::gen_computation() {
     merge     (cv::gapi::merge3(bin_b, bin_y, blur_r)),
     mresize   (cv::gapi::resize(merge, cv::Size(), resize_scale_inv, resize_scale_inv)),
     visual    (cv::gapi::addWeighted(bgrin, 1.0, mresize, 1.0, 0.0));
-  // hsv
-  //const cv::GMat h, s, v;
-  //std::tie(h,s,v) = cv::gapi::split3(cresize);
 
   return cv::GComputation(
-    cv::GIn(bgrin, hsvin, din),
+    cv::GIn(bgrin, din),
     cv::GOut(blur_r, bin_b, bin_y, visual)
   );
 }
