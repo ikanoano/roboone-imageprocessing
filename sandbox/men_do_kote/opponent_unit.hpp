@@ -14,7 +14,7 @@ enum class OpponentBehavior {
 
 class OpponentUnit {
 public:
-  OpponentUnit() : m() { }
+  OpponentUnit(int fps=30) : m(fps) { }
 
   struct OpponentModel {
     OpponentBehavior behavior;

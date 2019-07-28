@@ -32,7 +32,6 @@ Mikiri::men_do_kote_t Mikiri::get_men_do_kote(
     color_in(get_cv_size(color_rs), CV_8UC3,  (void*)color_rs.get_data(), cv::Mat::AUTO_STEP),
     depth_in(get_cv_size(depth_rs), CV_16UC1, (void*)depth_rs.get_data(), cv::Mat::AUTO_STEP);
 
-
   assert(color_in.size() == depth_in.size()*dec_magnitude);
 
   cv::Mat men_ext, do_ext, kote_ext;
@@ -42,7 +41,9 @@ Mikiri::men_do_kote_t Mikiri::get_men_do_kote(
   );
 
   std::vector<target_cand_t>  mens, dos, kotes;
-  const auto annotate = [&](const char buf[128], cv::Point p) {
+  const auto annotate = [&](const float xyz[3], const cv::Point p) {
+    char buf[128];
+    sprintf(buf, "(%5.3f, %5.3f, %5.3f)", xyz[0], xyz[1], xyz[2]);
     cv::putText(men_do_kote_visual, buf, p, cv::FONT_HERSHEY_SIMPLEX, 1, cv::Scalar(  0,  0,  0), 7, cv::LINE_AA);
     cv::putText(men_do_kote_visual, buf, p, cv::FONT_HERSHEY_SIMPLEX, 1, cv::Scalar(255,255,255), 2, cv::LINE_AA);
   };
@@ -67,32 +68,31 @@ Mikiri::men_do_kote_t Mikiri::get_men_do_kote(
     mens.push_back({{xyz[0], xyz[1], xyz[2]}, area});
 
     // Draw
-    char buf[128];
     cv::circle(men_do_kote_visual, center, radius, cv::Scalar(224,224,255), vthick, 8, 0);
-    sprintf(buf, "(%5.3f, %5.3f, %5.3f)", xyz[0], xyz[1], xyz[2]);
-    annotate(buf, center);
+    annotate(xyz, center);
   }
 
   // detect DO and KOTE
-  const auto detect_do_kote = [&](const auto &ext, auto &parts, const auto &color) {
+  const auto detect_do_kote = [&](const auto &ext, auto &parts, const auto color) {
     std::vector<std::vector<cv::Point> > contours;
     cv::findContours(ext, contours, cv::RETR_LIST, cv::CHAIN_APPROX_SIMPLE);
 
     for (const auto& contour : contours) {
       // Approximate curves with lines
       const auto arc = cv::arcLength(contour, true);
-      const std::vector<cv::Point> approx;
+      std::vector<cv::Point> approx;
       cv::approxPolyDP(cv::Mat(contour), approx, 0.05*arc, true);
 
+      // Prune if curve is not like a rectangle
+      if(approx.size() < 3 || approx.size() > 5) continue;
       // Prune if area is too small
       const int area = cv::contourArea(approx);
       if(area < 25) continue;
-      // Prune if curve is not like a rectangle
-      if(approx.size() > 5) continue;
 
       // Re-scale
+      const cv::Point2f
+        center        = contour_center(approx);
       const cv::Point
-        center        = contour_center(approx),
         center_color  = center * resize_scale_inv,
         center_depth  = center * resize_scale_inv_depth;
 
@@ -107,7 +107,9 @@ Mikiri::men_do_kote_t Mikiri::get_men_do_kote(
       // Draw
       std::vector<cv::Point> approxr;
       for (auto&& a : approx) { approxr.push_back(a*resize_scale_inv); }
-      cv::drawContours(men_do_kote_visual, {approx}, -1, color, vthick);
+      const std::vector<std::vector<cv::Point>> tmp = {approxr};
+      cv::drawContours(men_do_kote_visual, tmp, -1, color, vthick);
+      annotate(xyz, center_color);
     }
   };
 
@@ -134,43 +136,7 @@ bool Mikiri::uv_to_xyz(float xyz[3], const rs2::depth_frame& frame, int u, int v
     return true;
 }
 
-Mikiri::Mikiri(int fps) :
-  FPS(fps),
-  //                              H    S    V
-  red_thresh_low1   (cv::Scalar(248, 128,  64)),
-  red_thresh_up1    (cv::Scalar(255, 255, 255)),
-  red_thresh_low2   (cv::Scalar(  0, 128,  64)),
-  red_thresh_up2    (cv::Scalar(  8, 255, 255)),
-  blue_thresh_low   (cv::Scalar(135, 128,  48)),
-  blue_thresh_up    (cv::Scalar(180, 255, 255)),
-  yellow_thresh_low (cv::Scalar( 28, 128,  96)),
-  yellow_thresh_up  (cv::Scalar( 44, 255, 255)),
-  // depth
-  dresize   (cv::gapi::resize(din, cv::Size(), resize_scale_depth, resize_scale_depth, cv::INTER_AREA)),
-  dvalid    (cv::gapi::cmpGT(dresize, cv::GScalar(0))),
-  blur_d    (cv::gapi::gaussianBlur(dvalid, cv::Size(7, 7), 2, 2)),
-  dmask     (cv::gapi::cmpGE(blur_d, cv::GScalar(16))),
-  // color
-  cresize   (cv::gapi::resize(hsvin, cv::Size(), resize_scale, resize_scale, cv::INTER_AREA)),
-  red1      (cv::gapi::inRange(cresize, red_thresh_low1, red_thresh_up1)),
-  red2      (cv::gapi::inRange(cresize, red_thresh_low2, red_thresh_up2)),
-  red       (cv::gapi::bitwise_or(red1, red2)),
-  blue      (cv::gapi::inRange(cresize, blue_thresh_low , blue_thresh_up)),
-  yellow    (cv::gapi::inRange(cresize, yellow_thresh_low, yellow_thresh_up)),
-  masked_r  (cv::gapi::mask(red, dmask)),
-  masked_b  (cv::gapi::mask(blue, dmask)),
-  masked_y  (cv::gapi::mask(yellow, dmask)),
-  blur_r    (cv::gapi::gaussianBlur(masked_r, cv::Size(15, 15), 2, 2)),
-  blur_b    (cv::gapi::gaussianBlur(masked_b, cv::Size( 7,  7), 2, 2)),
-  blur_y    (cv::gapi::gaussianBlur(masked_y, cv::Size( 7,  7), 2, 2)),
-  bin_b     (cv::gapi::threshold(blur_b, cv::GScalar(16), cv::GScalar(255), cv::THRESH_BINARY)),
-  bin_y     (cv::gapi::threshold(blur_y, cv::GScalar(16), cv::GScalar(255), cv::THRESH_BINARY)),
-  merge     (cv::gapi::merge3(bin_b, bin_y, blur_r)),
-  mresize   (cv::gapi::resize(merge, cv::Size(), resize_scale_inv, resize_scale_inv)),
-  visual    (cv::gapi::addWeighted(bgrin, 1.0, mresize, 1.0, 0.0)),
-  align     (RS2_STREAM_COLOR),
-  color2mdk (cv::GComputation(cv::GIn(bgrin, hsvin, din), cv::GOut(blur_r, bin_b, bin_y, visual)))
-{
+Mikiri::Mikiri(int fps) : FPS(fps), align(RS2_STREAM_COLOR), color2mdk(gen_computation()){
   std::cout << "CV version: " << CV_VERSION          << std::endl;
   std::cout << "RS version: " << RS2_API_VERSION_STR << std::endl;
 
@@ -201,5 +167,50 @@ Mikiri::Mikiri(int fps) :
   //csensor.set_option(RS2_OPTION_FRAMES_QUEUE_SIZE, 2);
 }
 
+cv::GComputation Mikiri::gen_computation() {
+  // Initialize GComputation
+  const cv::GScalar   // HSV threshold for MEN, DO, and KOTE
+    //                              H    S    V
+    red_thresh_low1   (cv::Scalar(248, 128,  64)),
+    red_thresh_up1    (cv::Scalar(255, 255, 255)),
+    red_thresh_low2   (cv::Scalar(  0, 128,  64)),
+    red_thresh_up2    (cv::Scalar(  8, 255, 255)),
+    blue_thresh_low   (cv::Scalar(135, 128,  48)),
+    blue_thresh_up    (cv::Scalar(180, 255, 255)),
+    yellow_thresh_low (cv::Scalar( 28, 128,  96)),
+    yellow_thresh_up  (cv::Scalar( 44, 255, 255));
+  const cv::GMat
+    bgrin, hsvin, din,
+    // depth
+    dresize   (cv::gapi::resize(din, cv::Size(), resize_scale_depth, resize_scale_depth, cv::INTER_AREA)),
+    dvalid    (cv::gapi::cmpGT(dresize, cv::GScalar(0))),
+    blur_d    (cv::gapi::gaussianBlur(dvalid, cv::Size(7, 7), 2, 2)),
+    dmask     (cv::gapi::cmpGE(blur_d, cv::GScalar(16))),
+    // color
+    cresize   (cv::gapi::resize(hsvin, cv::Size(), resize_scale, resize_scale, cv::INTER_AREA)),
+    red1      (cv::gapi::inRange(cresize, red_thresh_low1, red_thresh_up1)),
+    red2      (cv::gapi::inRange(cresize, red_thresh_low2, red_thresh_up2)),
+    red       (cv::gapi::bitwise_or(red1, red2)),
+    blue      (cv::gapi::inRange(cresize, blue_thresh_low , blue_thresh_up)),
+    yellow    (cv::gapi::inRange(cresize, yellow_thresh_low, yellow_thresh_up)),
+    masked_r  (cv::gapi::mask(red, dmask)),
+    masked_b  (cv::gapi::mask(blue, dmask)),
+    masked_y  (cv::gapi::mask(yellow, dmask)),
+    blur_r    (cv::gapi::gaussianBlur(masked_r, cv::Size(15, 15), 2, 2)),
+    blur_b    (cv::gapi::gaussianBlur(masked_b, cv::Size( 7,  7), 2, 2)),
+    blur_y    (cv::gapi::gaussianBlur(masked_y, cv::Size( 7,  7), 2, 2)),
+    bin_b     (cv::gapi::threshold(blur_b, cv::GScalar(16), cv::GScalar(255), cv::THRESH_BINARY)),
+    bin_y     (cv::gapi::threshold(blur_y, cv::GScalar(16), cv::GScalar(255), cv::THRESH_BINARY)),
+    merge     (cv::gapi::merge3(bin_b, bin_y, blur_r)),
+    mresize   (cv::gapi::resize(merge, cv::Size(), resize_scale_inv, resize_scale_inv)),
+    visual    (cv::gapi::addWeighted(bgrin, 1.0, mresize, 1.0, 0.0));
+  // hsv
+  //const cv::GMat h, s, v;
+  //std::tie(h,s,v) = cv::gapi::split3(cresize);
 
+  return cv::GComputation(
+    cv::GIn(bgrin, hsvin, din),
+    cv::GOut(blur_r, bin_b, bin_y, visual)
+  );
+}
 
