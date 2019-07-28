@@ -171,14 +171,14 @@ cv::GComputation Mikiri::gen_computation() {
   // Initialize GComputation
   const cv::GScalar   // HSV threshold for MEN, DO, and KOTE
     //                              H    S    V
-    red_thresh_low1   (cv::Scalar(174, 128,  64)),
+    red_thresh_low1   (cv::Scalar(168, 128,  64)),
     red_thresh_up1    (cv::Scalar(180, 255, 255)),
     red_thresh_low2   (cv::Scalar(  0, 128,  64)),
     red_thresh_up2    (cv::Scalar(  6, 255, 255)),
-    blue_thresh_low   (cv::Scalar( 95, 128,  48)),
-    blue_thresh_up    (cv::Scalar(126, 255, 255)),
+    blue_thresh_low   (cv::Scalar( 98, 128,  48)),
+    blue_thresh_up    (cv::Scalar(128, 255, 255)),
     yellow_thresh_low (cv::Scalar( 20, 128,  96)),
-    yellow_thresh_up  (cv::Scalar( 30, 255, 255));
+    yellow_thresh_up  (cv::Scalar( 33, 255, 255));
   const cv::GMat
     bgrin, din;
   const auto [b, g, r] = cv::gapi::split3(bgrin);
@@ -188,8 +188,8 @@ cv::GComputation Mikiri::gen_computation() {
     // depth
     dresize   (cv::gapi::resize(din, cv::Size(), resize_scale_depth, resize_scale_depth, cv::INTER_AREA)),
     dvalid    (cv::gapi::cmpGT(dresize, cv::GScalar(0))),
-    blur_d    (cv::gapi::gaussianBlur(dvalid, cv::Size(7, 7), 2, 2)),
-    dmask     (cv::gapi::cmpGE(blur_d, cv::GScalar(16))),
+    blur_d    (cv::gapi::blur(dvalid, cv::Size(7, 7))),
+    dmask     (cv::gapi::cmpGE(blur_d, cv::GScalar(4))),
     // color
     cresize   (cv::gapi::resize(hsvin, cv::Size(), resize_scale, resize_scale, cv::INTER_AREA)),
     red1      (cv::gapi::inRange(cresize, red_thresh_low1, red_thresh_up1)),
@@ -200,18 +200,19 @@ cv::GComputation Mikiri::gen_computation() {
     masked_r  (cv::gapi::mask(red, dmask)),
     masked_b  (cv::gapi::mask(blue, dmask)),
     masked_y  (cv::gapi::mask(yellow, dmask)),
-    blur_r    (cv::gapi::gaussianBlur(masked_r, cv::Size(15, 15), 2, 2)),
-    blur_b    (cv::gapi::gaussianBlur(masked_b, cv::Size( 7,  7), 2, 2)),
-    blur_y    (cv::gapi::gaussianBlur(masked_y, cv::Size( 7,  7), 2, 2)),
-    bin_b     (cv::gapi::threshold(blur_b, cv::GScalar(16), cv::GScalar(255), cv::THRESH_BINARY)),
-    bin_y     (cv::gapi::threshold(blur_y, cv::GScalar(16), cv::GScalar(255), cv::THRESH_BINARY)),
-    merge     (cv::gapi::merge3(bin_b, bin_y, blur_r)),
+    blur_r    (cv::gapi::blur(masked_r, cv::Size( 7,  7))),
+    blur_b    (cv::gapi::blur(masked_b, cv::Size( 5,  5))),
+    blur_y    (cv::gapi::blur(masked_y, cv::Size( 5,  5))),
+    bin_r     (std::get<0>(cv::gapi::threshold(blur_r, cv::GScalar(255), cv::THRESH_OTSU))),
+    bin_b     (std::get<0>(cv::gapi::threshold(blur_b, cv::GScalar(255), cv::THRESH_OTSU))),
+    bin_y     (std::get<0>(cv::gapi::threshold(blur_y, cv::GScalar(255), cv::THRESH_OTSU))),
+    merge     (cv::gapi::merge3(bin_b, bin_y, bin_r)),
     mresize   (cv::gapi::resize(merge, cv::Size(), resize_scale_inv, resize_scale_inv)),
-    visual    (cv::gapi::addWeighted(bgrin, 1.0, mresize, 1.0, 0.0));
+    visual    (cv::gapi::addWeighted(bgrin, 0.5, mresize, 0.75, 0.0));
 
   return cv::GComputation(
     cv::GIn(bgrin, din),
-    cv::GOut(blur_r, bin_b, bin_y, visual)
+    cv::GOut(bin_r, bin_b, bin_y, visual)
   );
 }
 
