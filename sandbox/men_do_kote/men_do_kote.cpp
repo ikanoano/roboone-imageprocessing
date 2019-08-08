@@ -119,20 +119,24 @@ Mikiri::men_do_kote_t Mikiri::get_men_do_kote(
   return {mens, dos, kotes};
 }
 
-bool Mikiri::uv_to_xyz(float xyz[3], const rs2::depth_frame& frame, int u, int v) {
-    constexpr int ds[][2] = {{0,0}, {0,1}, {0,-1}, {1,0}, {-1,0}};
-    float dist;
-    for (auto&& d : ds) {
-      dist = frame.get_distance(u+d[0], v+d[1]);
-      if(dist != 0.0f /*&& dist != -0.0f*/) break;
+bool Mikiri::uv_to_xyz(float xyz[3], const rs2::depth_frame& frame, const int u, const int v) {
+    float dist = 0.0f;
+    int validnum = 0;
+    for (int du = -2; du <= 2; du++)
+    for (int dv = -2; dv <= 2; dv++) {
+      const float tmp = frame.get_distance(u+du, v+dv);
+      if(tmp == 0.0f) continue;
+      validnum++;
+      dist += tmp;
     }
-    if(dist==0.0f) return false;
+    if(validnum==0) return false;
+    dist /= validnum;
 
-    // Deproject from pixel to xyz in 3D
-    float xy[2] = {(float)u, (float)v};
+    // Deproject uv to xyz
     const rs2_intrinsics intr =
       frame.get_profile().as<rs2::video_stream_profile>().get_intrinsics();
-    rs2_deproject_pixel_to_point(xyz, &intr, xy, dist);
+    const float uv[] = {(const float)u, (const float)v};
+    rs2_deproject_pixel_to_point(xyz, &intr, uv, dist);
     return true;
 }
 
