@@ -1,5 +1,5 @@
 #include <cstdio>
-#include "opponent_unit.hpp"
+#include "../src/opponent_unit.hpp"
 
 int main(int argc, char * argv[]) try {
 
