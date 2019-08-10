@@ -7,7 +7,7 @@
 #include <opencv2/gapi/imgproc.hpp>
 #include <numeric>
 #include <tuple>
-#include "men_do_kote.hpp"
+#include "Mikiri.hpp"
 
 Mikiri::men_do_kote_t Mikiri::get_men_do_kote(
     cv::Mat&  men_do_kote_visual

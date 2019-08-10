@@ -1,6 +1,6 @@
 #include <algorithm>
-#include "opponent_unit.hpp"
-#include "men_do_kote.hpp"
+#include "OpponentUnit.hpp"
+#include "Mikiri.hpp"
 
 OpponentUnit::OpponentUnit(int fps) : m(fps) {
   cv::namedWindow(visual_window,  cv::WINDOW_AUTOSIZE);

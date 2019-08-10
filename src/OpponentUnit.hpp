@@ -2,7 +2,7 @@
 #define OPPONENT_UNIT
 
 #include <optional>
-#include "men_do_kote.hpp"
+#include "Mikiri.hpp"
 
 class OpponentUnit {
 public:
