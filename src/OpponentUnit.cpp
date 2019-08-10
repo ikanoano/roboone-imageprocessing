@@ -23,8 +23,8 @@ OpponentUnit::OpponentModel OpponentUnit::survey() {
   std::sort(mdk.kotes.begin(),  mdk.kotes.end(),  howtosort);
 
   return {
-    mdk.mens.empty()  ? OpponentPart(mdk.mens[0].coord ) : std::nullopt,
-    mdk.dos.empty()   ? OpponentPart(mdk.dos[0].coord  ) : std::nullopt,
-    mdk.kotes.empty() ? OpponentPart(mdk.kotes[0].coord) : std::nullopt,
+    !mdk.mens.empty() ? OpponentPart(mdk.mens[0].coord ) : std::nullopt,
+    !mdk.dos.empty()  ? OpponentPart(mdk.dos[0].coord  ) : std::nullopt,
+    !mdk.kotes.empty()? OpponentPart(mdk.kotes[0].coord) : std::nullopt,
   };
 }
