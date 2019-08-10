@@ -1,21 +1,12 @@
 #include <cstdio>
-#include "men_do_kote.hpp"
+#include "opponent_unit.hpp"
 
 int main(int argc, char * argv[]) try {
 
-  const auto visual_window = "MEN(red) DO(blue) KOTE(green) Visualizer";
-  cv::namedWindow(visual_window,  cv::WINDOW_AUTOSIZE);
-
-  Mikiri m;
+  OpponentUnit o;
 
   while (cv::waitKey(1)!='q') {
-
-    // Search datotsu-parts
-    cv::Mat visual_mat;
-    const auto mdk = m.get_men_do_kote(visual_mat);
-
-    // Update the window with new data
-    cv::imshow(visual_window, visual_mat);
+    o.survey();
   }
 
   return EXIT_SUCCESS;

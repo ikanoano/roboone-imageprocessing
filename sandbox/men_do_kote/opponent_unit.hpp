@@ -1,31 +1,25 @@
 #ifndef OPPONENT_UNIT
 #define OPPONENT_UNIT
 
+#include <optional>
 #include "men_do_kote.hpp"
-
-enum class OpponentBehavior {
-  STABLE_FAR_OUT_OF_RANGE,
-  STABLE_FAR_IN_RANGE,
-  STABLE_NEAR,
-  APPROACHING_VERTICAL,
-  APPROACHING_HORIZONTAL,
-  EVACUATING
-};
 
 class OpponentUnit {
 public:
-  OpponentUnit(int fps=30) : m(fps) { }
+  OpponentUnit(int fps=30);
 
+  typedef std::optional<std::array<float, 3>> OpponentPart;
   struct OpponentModel {
-    OpponentBehavior behavior;
-    float position[3][3];
-    float delta[3][3];  // Expected to be very unstable
+    OpponentPart men;
+    OpponentPart dou;
+    OpponentPart kote;
   };
 
-  void startCamera() {} // To be implemented
-  void stopCamera() {}  // To be implemented
-  void survey() {}      // To be implemented
+  void startCamera();
+  void stopCamera();
+  OpponentModel survey();
 private:
+  const char* visual_window = "MEN(red) DO(blue) KOTE(green) Visualizer";
   Mikiri m;
 };
 
