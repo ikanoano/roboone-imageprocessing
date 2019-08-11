@@ -1,12 +1,25 @@
 #include <cstdio>
 #include "../src/OpponentUnit.hpp"
 
+void printOpponent(const char* pre, const OpponentUnit::OpponentPart &op) {
+  if(!op.has_value()) return;
+  std::cout
+    << pre << ": ("
+    << op.value()[0] << ", "
+    << op.value()[1] << ", "
+    << op.value()[2] << ")"
+    << std::endl;
+}
+
 int main(int argc, char * argv[]) try {
 
   OpponentUnit o;
 
   while (cv::waitKey(1)!='q') {
-    o.survey();
+    const auto s = o.survey();
+    printOpponent("men", s.men);
+    printOpponent("dou", s.dou);
+    printOpponent("kote", s.kote);
   }
 
   return EXIT_SUCCESS;

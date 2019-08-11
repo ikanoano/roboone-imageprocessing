@@ -49,6 +49,7 @@ private:
   static cv::Size                 get_cv_size(const rs2::video_frame &f);
   static cv::Point2f              contour_center(const std::vector<cv::Point> &contour);
   static cv::GComputation         gen_computation();
+  static target_cand_t            conv_tct(const target_cand_t &tc);
 
   static constexpr double
     resize_scale            = 0.2,
@@ -65,6 +66,13 @@ inline cv::Point2f Mikiri::contour_center(const std::vector<cv::Point> &contour)
   cv::Point sum(0, 0);
   for (auto&& p : contour) { sum += p; }
   return ((cv::Point2f)sum)/((int)contour.size());
+}
+
+inline Mikiri::target_cand_t Mikiri::conv_tct(const target_cand_t &tc) {
+  return {
+    {tc.coord[2], -tc.coord[0], -tc.coord[1]},
+    tc.area
+  };
 }
 
 #endif /* end of include guard */
