@@ -24,8 +24,8 @@ OpponentUnit::OpponentModel OpponentUnit::survey() {
 
   return {
     OpponentBehavior::STABLE_NEAR,
-    !mdk.mens.empty() ? OpponentPart(mdk.mens[0].coord ) : std::nullopt,
-    !mdk.dos.empty()  ? OpponentPart(mdk.dos[0].coord  ) : std::nullopt,
-    !mdk.kotes.empty()? OpponentPart(mdk.kotes[0].coord) : std::nullopt,
+    !mdk.mens.empty() ? OpponentPart(mdk.mens[0].coord ) : boost::none,
+    !mdk.dos.empty()  ? OpponentPart(mdk.dos[0].coord  ) : boost::none,
+    !mdk.kotes.empty()? OpponentPart(mdk.kotes[0].coord) : boost::none,
   };
 }

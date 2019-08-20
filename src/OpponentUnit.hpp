@@ -1,7 +1,7 @@
 #ifndef OPPONENT_UNIT
 #define OPPONENT_UNIT
 
-#include <optional>
+#include <boost/optional.hpp>
 #include "Mikiri.hpp"
 
 class OpponentUnit {
@@ -16,7 +16,7 @@ public:
     APPROACHING_HORIZONTAL,
     EVACUATING
   };
-  typedef std::optional<std::array<float, 3>> OpponentPart;
+  typedef boost::optional<std::array<float, 3>> OpponentPart;
   struct OpponentModel {
     OpponentBehavior  behavior;
     OpponentPart      men;
