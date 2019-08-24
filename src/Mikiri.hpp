@@ -70,7 +70,7 @@ inline cv::Point2f Mikiri::contour_center(const std::vector<cv::Point> &contour)
 
 inline Mikiri::target_cand_t Mikiri::conv_tct(const target_cand_t &tc) {
   return {
-    {tc.coord[2], -tc.coord[0], -tc.coord[1]},
+    {tc.coord[2], -tc.coord[1], tc.coord[0]},
     tc.area
   };
 }
