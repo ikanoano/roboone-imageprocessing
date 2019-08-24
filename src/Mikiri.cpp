@@ -50,7 +50,7 @@ Mikiri::men_do_kote_t Mikiri::get_men_do_kote(
 
   // detect MEN
   std::vector<cv::Vec3f>      mens_uvr; // { ((x,y), r), ... }
-  const int dp=2, minDist=men_ext.rows/8, canny_thresh_high=32, thresh_find=30, minRadius=6, maxRadius=30;
+  const int dp=1, minDist=men_ext.rows/8, canny_thresh_high=32, thresh_find=10, minRadius=5, maxRadius=30;
   HoughCircles(
       men_ext, mens_uvr, cv::HOUGH_GRADIENT, dp,
       minDist, canny_thresh_high, thresh_find, minRadius, maxRadius);
@@ -60,7 +60,9 @@ Mikiri::men_do_kote_t Mikiri::get_men_do_kote(
     const auto men_uvr_depth = men_uvr * resize_scale_inv_depth;
     const cv::Point center(cvRound(men_uvr_color[0]), cvRound(men_uvr_color[1]));
     const int radius = cvRound(men_uvr_color[2]);
+    // Prune if area is too small
     const int area = radius*radius*3;
+    if(area < 40) continue;
 
     // Add
     float xyz[3];
@@ -87,7 +89,7 @@ Mikiri::men_do_kote_t Mikiri::get_men_do_kote(
       if(approx.size() < 3 || approx.size() > 5) continue;
       // Prune if area is too small
       const int area = cv::contourArea(approx);
-      if(area < 25) continue;
+      if(area < 50) continue;
 
       // Re-scale
       const cv::Point2f
@@ -179,9 +181,9 @@ cv::GComputation Mikiri::gen_computation() {
   // Initialize GComputation
   const cv::GScalar   // HSV threshold for MEN, DO, and KOTE
     //                              H    S    V
-    red_thresh_low1   (cv::Scalar(168, 128,  64)),
+    red_thresh_low1   (cv::Scalar(168, 128,  48)),
     red_thresh_up1    (cv::Scalar(180, 255, 255)),
-    red_thresh_low2   (cv::Scalar(  0, 128,  64)),
+    red_thresh_low2   (cv::Scalar(  0, 128,  48)),
     red_thresh_up2    (cv::Scalar(  6, 255, 255)),
     blue_thresh_low   (cv::Scalar( 98, 128,  48)),
     blue_thresh_up    (cv::Scalar(128, 255, 255)),
@@ -215,7 +217,9 @@ cv::GComputation Mikiri::gen_computation() {
     bin_b     (std::get<0>(cv::gapi::threshold(blur_b, cv::GScalar(255), cv::THRESH_OTSU))),
     bin_y     (std::get<0>(cv::gapi::threshold(blur_y, cv::GScalar(255), cv::THRESH_OTSU))),
     merge     (cv::gapi::merge3(bin_b, bin_y, bin_r)),
+    // visualize
     mresize   (cv::gapi::resize(merge, cv::Size(), resize_scale_inv, resize_scale_inv)),
+    dmresize  (cv::gapi::resize(dmask, cv::Size(), resize_scale_inv_depth, resize_scale_inv_depth)),
     visual    (cv::gapi::addWeighted(bgrin, 0.5, mresize, 0.75, 0.0));
 
   return cv::GComputation(
