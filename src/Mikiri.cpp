@@ -87,6 +87,8 @@ Mikiri::men_do_kote_t Mikiri::get_men_do_kote(
 
       // Prune if curve is not like a rectangle
       if(approx.size() < 3 || approx.size() > 5) continue;
+      // Prune if contour is not convex
+      if(!cv::isContourConvex(approx)) continue;
       // Prune if area is too small
       const int area = cv::contourArea(approx);
       if(area < 50) continue;
