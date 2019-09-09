@@ -1,8 +1,13 @@
 #include <cstdio>
+#include <deque>
+#include <chrono>
 #include "../src/OpponentUnit.hpp"
 
 void printOpponent(const char* pre, const OpponentUnit::OpponentPart &op) {
-  if(!op.has_value()) return;
+  if(!op) {
+    std::cout << pre << "none" << std::endl;
+    return;
+  }
   std::cout
     << pre << ": ("
     << op.value()[0] << ", "
@@ -11,12 +16,26 @@ void printOpponent(const char* pre, const OpponentUnit::OpponentPart &op) {
     << std::endl;
 }
 
+void show_fps() {
+  constexpr int range = 5;
+  static std::deque<std::chrono::system_clock::time_point> cap;
+  const auto now = std::chrono::system_clock::now();
+  cap.push_back(now);
+  while(cap.front() < now-std::chrono::seconds(range)) {
+    cap.pop_front();
+  }
+  std::cout << "FPS = " << 1.0*cap.size()/range << std::endl;
+}
+
 int main(int argc, char * argv[]) try {
 
   OpponentUnit o;
 
   while (cv::waitKey(1)!='q') {
-    const auto s = o.survey();
+    const auto s_ = o.survey();
+    if(!s_) continue;   // frame is not yet ready
+    show_fps();
+    const auto s = s_.value();
     printOpponent("men", s.men);
     printOpponent("dou", s.dou);
     printOpponent("kote", s.kote);

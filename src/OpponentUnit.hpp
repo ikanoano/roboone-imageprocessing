@@ -6,7 +6,7 @@
 
 class OpponentUnit {
 public:
-  OpponentUnit(int fps=30);
+  OpponentUnit(int fps=30, bool visualize=true) : m(fps,visualize) {}
 
   enum class OpponentBehavior {
     STABLE_FAR_OUT_OF_RANGE,
@@ -26,9 +26,8 @@ public:
 
   void startCamera();
   void stopCamera();
-  OpponentModel survey();
+  boost::optional<OpponentModel> survey();
 private:
-  const char* visual_window = "MEN(red) DO(blue) KOTE(green) Visualizer";
   Mikiri m;
 };
 

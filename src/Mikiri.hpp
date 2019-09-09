@@ -2,15 +2,17 @@
 #define MEN_DO_KOTE
 
 #include <vector>
+#include <array>
+#include <boost/optional.hpp>
 #include <librealsense2/rs.hpp>
 #include <opencv2/opencv.hpp>
 #include <opencv2/gapi.hpp>
-#include <array>
 
 class Mikiri {
 
 public:
-  const int FPS;
+  const int   FPS;
+  const bool  visualize;
 
   struct target_cand_t {
     std::array<float, 3>  coord;
@@ -22,10 +24,10 @@ public:
     std::vector<target_cand_t> kotes;
   };
 
-  Mikiri(int fps = 30);
+  Mikiri(int fps = 30, bool visualize = true);
   void                            start() {}; // To be implemented
   void                            stop()  {}; // To be implemented
-  men_do_kote_t                   get_men_do_kote(cv::Mat&  men_do_kote_visual);
+  boost::optional<men_do_kote_t>  get_men_do_kote();
 
 private:
 
@@ -48,7 +50,7 @@ private:
 
   static cv::Size                 get_cv_size(const rs2::video_frame &f);
   static cv::Point2f              contour_center(const std::vector<cv::Point> &contour);
-  static cv::GComputation         gen_computation();
+  static cv::GComputation         gen_computation(bool visualize);
   static target_cand_t            conv_tct(const target_cand_t &tc);
 
   static constexpr double
@@ -57,7 +59,7 @@ private:
     resize_scale_inv        = 1/resize_scale,
     resize_scale_inv_depth  = 1/resize_scale_depth;
   static constexpr float hard_offset[3] = {-0.18, 0.08, 0.48};
-
+  const char* visual_window = "MEN(red) DO(blue) KOTE(green) Visualizer";
 };
 
 inline cv::Size Mikiri::get_cv_size(const rs2::video_frame &f) {

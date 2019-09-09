@@ -1,29 +1,27 @@
 // License: Apache 2.0. See LICENSE file in root directory.
 // Copyright(c) 2017 Intel Corporation. All Rights Reserved.
 
+#include <numeric>
+#include <tuple>
 #include <librealsense2/rsutil.h>
 #include <opencv2/opencv.hpp>
 #include <opencv2/gapi/core.hpp>
 #include <opencv2/gapi/imgproc.hpp>
-#include <numeric>
-#include <tuple>
 #include "Mikiri.hpp"
 
-Mikiri::men_do_kote_t Mikiri::get_men_do_kote(
-    cv::Mat&  men_do_kote_visual
-) {
+// nonblocking
+boost::optional<Mikiri::men_do_kote_t> Mikiri::get_men_do_kote () {
   constexpr int vthick = 3;
 
   // Wait for next set of frames from the camera
-  rs2::frameset    frameset  = align.process(pipe.wait_for_frames());
-  rs2::video_frame color_rs  = frameset.get_color_frame();
-  rs2::depth_frame depth_rs  = frameset.get_depth_frame();
-  while(!color_rs || !depth_rs) {
-    // TODO: dirty
-    frameset  = align.process(pipe.wait_for_frames());
-    color_rs  = frameset.get_color_frame();
-    depth_rs  = frameset.get_depth_frame();
-  }
+  rs2::frameset     frame_cd;
+  if(!pipe.poll_for_frames(&frame_cd)) return boost::none;
+
+  // Align & filtering
+  rs2::frameset     aligned   = align.process(frame_cd);
+  rs2::video_frame  color_rs  = aligned.get_color_frame();
+  rs2::depth_frame  depth_rs  = aligned.get_depth_frame();
+  if(!color_rs || !depth_rs) return boost::none;
   depth_rs = depth_rs.apply_filter(dec_filter);
   depth_rs = depth_rs.apply_filter(spat_filter);
 
@@ -34,18 +32,18 @@ Mikiri::men_do_kote_t Mikiri::get_men_do_kote(
 
   assert(color_in.size() == depth_in.size()*dec_magnitude);
 
-  cv::Mat men_ext, do_ext, kote_ext;
+  cv::Mat men_ext, do_ext, kote_ext, visual_ext;
   color2mdk.apply(
     cv::gin(color_in, depth_in),
-    cv::gout(men_ext, do_ext, kote_ext, men_do_kote_visual)
+    cv::gout(men_ext, do_ext, kote_ext, visual_ext)
   );
 
   std::vector<target_cand_t>  mens, dos, kotes;
   const auto annotate = [&](const float xyz[3], const cv::Point p) {
     char buf[128];
     sprintf(buf, "(%5.3f, %5.3f, %5.3f)", xyz[0], xyz[1], xyz[2]);
-    cv::putText(men_do_kote_visual, buf, p, cv::FONT_HERSHEY_SIMPLEX, 1, cv::Scalar(  0,  0,  0), 7, cv::LINE_AA);
-    cv::putText(men_do_kote_visual, buf, p, cv::FONT_HERSHEY_SIMPLEX, 1, cv::Scalar(255,255,255), 2, cv::LINE_AA);
+    cv::putText(visual_ext, buf, p, cv::FONT_HERSHEY_SIMPLEX, 1, cv::Scalar(  0,  0,  0), 7, cv::LINE_AA);
+    cv::putText(visual_ext, buf, p, cv::FONT_HERSHEY_SIMPLEX, 1, cv::Scalar(255,255,255), 2, cv::LINE_AA);
   };
 
   // detect MEN
@@ -70,7 +68,8 @@ Mikiri::men_do_kote_t Mikiri::get_men_do_kote(
     mens.push_back({{xyz[0], xyz[1], xyz[2]}, area});
 
     // Draw
-    cv::circle(men_do_kote_visual, center, radius, cv::Scalar(224,224,255), vthick, 8, 0);
+    if(!visualize) continue;
+    cv::circle(visual_ext, center, radius, cv::Scalar(224,224,255), vthick, 8, 0);
     annotate(xyz, center);
   }
 
@@ -109,10 +108,11 @@ Mikiri::men_do_kote_t Mikiri::get_men_do_kote(
       });
 
       // Draw
+      if(!visualize) continue;
       std::vector<cv::Point> approxr;
       for (auto&& a : approx) { approxr.push_back(a*resize_scale_inv); }
       const std::vector<std::vector<cv::Point>> tmp = {approxr};
-      cv::drawContours(men_do_kote_visual, tmp, -1, color, vthick);
+      cv::drawContours(visual_ext, tmp, -1, color, vthick);
       annotate(xyz, center_color);
     }
   };
@@ -124,7 +124,19 @@ Mikiri::men_do_kote_t Mikiri::get_men_do_kote(
   for (auto&& e : mens)  e = conv_tct(e);
   for (auto&& e : dos)   e = conv_tct(e);
   for (auto&& e : kotes) e = conv_tct(e);
-  return {mens, dos, kotes};
+
+  if(visualize) {
+    cv::Point2f src_center(visual_ext.cols/2.0F, visual_ext.rows/2.0F);
+    cv::Mat rot_mat = getRotationMatrix2D(src_center, -90, 1.0);
+    rot_mat.at<double>(0,2) += -visual_ext.cols/2 + visual_ext.rows/2;
+    rot_mat.at<double>(1,2) += -visual_ext.rows/2 + visual_ext.cols/2;
+    cv::Mat dst;
+    cv::warpAffine(visual_ext, dst, rot_mat, cv::Size(visual_ext.rows,visual_ext.cols));
+
+    cv::imshow(visual_window, dst);
+  }
+
+  return men_do_kote_t{mens, dos, kotes};
 }
 
 bool Mikiri::uv_to_xyz(float xyz[3], const rs2::depth_frame& frame, const int u, const int v) {
@@ -148,7 +160,11 @@ bool Mikiri::uv_to_xyz(float xyz[3], const rs2::depth_frame& frame, const int u,
     return true;
 }
 
-Mikiri::Mikiri(int fps) : FPS(fps), align(RS2_STREAM_COLOR), color2mdk(gen_computation()){
+Mikiri::Mikiri(int fps, bool visualize) :
+    FPS(fps),
+    visualize(visualize),
+    align(RS2_STREAM_COLOR),
+    color2mdk(gen_computation(visualize)) {
   std::cout << "CV version: " << CV_VERSION          << std::endl;
   std::cout << "RS version: " << RS2_API_VERSION_STR << std::endl;
 
@@ -177,9 +193,11 @@ Mikiri::Mikiri(int fps) : FPS(fps), align(RS2_STREAM_COLOR), color2mdk(gen_compu
   //csensor.set_option(RS2_OPTION_ENABLE_AUTO_EXPOSURE, 1);
   //csensor.set_option(RS2_OPTION_ENABLE_AUTO_WHITE_BALANCE, 1);
   //csensor.set_option(RS2_OPTION_FRAMES_QUEUE_SIZE, 2);
+
+  cv::namedWindow(visual_window,  cv::WINDOW_AUTOSIZE);
 }
 
-cv::GComputation Mikiri::gen_computation() {
+cv::GComputation Mikiri::gen_computation(bool visualize) {
   // Initialize GComputation
   const cv::GScalar   // HSV threshold for MEN, DO, and KOTE
     //                              H    S    V
@@ -226,7 +244,8 @@ cv::GComputation Mikiri::gen_computation() {
 
   return cv::GComputation(
     cv::GIn(bgrin, din),
-    cv::GOut(bin_r, bin_b, bin_y, visual)
+    visualize ? cv::GOut(bin_r, bin_b, bin_y, visual) :
+                cv::GOut(bin_r, bin_b, bin_y, bgrin)
   );
 }
 
