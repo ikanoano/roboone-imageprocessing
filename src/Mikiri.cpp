@@ -35,7 +35,8 @@ boost::optional<Mikiri::men_do_kote_t> Mikiri::get_men_do_kote () {
   cv::Mat men_ext, do_ext, kote_ext, visual_ext;
   color2mdk.apply(
     cv::gin(color_in, depth_in),
-    cv::gout(men_ext, do_ext, kote_ext, visual_ext)
+    visualize ? cv::gout(men_ext, do_ext, kote_ext, visual_ext) :
+                cv::gout(men_ext, do_ext, kote_ext)
   );
 
   std::vector<target_cand_t>  mens, dos, kotes;
@@ -76,7 +77,7 @@ boost::optional<Mikiri::men_do_kote_t> Mikiri::get_men_do_kote () {
   // detect DO and KOTE
   const auto detect_do_kote = [&](const auto &ext, auto &parts, const auto color) {
     std::vector<std::vector<cv::Point> > contours;
-    cv::findContours(ext, contours, cv::RETR_LIST, cv::CHAIN_APPROX_SIMPLE);
+    cv::findContours(ext, contours, cv::RETR_EXTERNAL, cv::CHAIN_APPROX_SIMPLE);
 
     for (const auto& contour : contours) {
       // Approximate curves with lines
@@ -170,8 +171,8 @@ Mikiri::Mikiri(int fps, bool visualize) :
 
   // video stream
   cfg.disable_all_streams();
-  cfg.enable_stream(RS2_STREAM_COLOR, RS2_FORMAT_BGR8, fps);
-  cfg.enable_stream(RS2_STREAM_DEPTH, RS2_FORMAT_Z16,  fps);
+  cfg.enable_stream(RS2_STREAM_COLOR, 1280, 720, RS2_FORMAT_BGR8, fps);
+  cfg.enable_stream(RS2_STREAM_DEPTH,  640, 480, RS2_FORMAT_Z16,  fps);
 
   // filters
   dec_filter.set_option(RS2_OPTION_FILTER_MAGNITUDE, dec_magnitude);
@@ -188,11 +189,12 @@ Mikiri::Mikiri(int fps, bool visualize) :
   depth_scale = dsensor.get_depth_scale();
 
   // Set auto exposure and auto white balance
-  // TODO: how to get camera device?
-  //const auto csensor = profile.get_device().first<rs2::sr300_color_sensor>();
-  //csensor.set_option(RS2_OPTION_ENABLE_AUTO_EXPOSURE, 1);
-  //csensor.set_option(RS2_OPTION_ENABLE_AUTO_WHITE_BALANCE, 1);
-  //csensor.set_option(RS2_OPTION_FRAMES_QUEUE_SIZE, 2);
+  rs2::frameset data = pipe.wait_for_frames();
+  const auto frame   = data.get_color_frame();
+  const auto csensor = rs2::sensor_from_frame(frame);
+  csensor->set_option(RS2_OPTION_ENABLE_AUTO_EXPOSURE, 1);
+  csensor->set_option(RS2_OPTION_ENABLE_AUTO_WHITE_BALANCE, 1);
+  csensor->set_option(RS2_OPTION_FRAMES_QUEUE_SIZE, 2);
 
   cv::namedWindow(visual_window,  cv::WINDOW_AUTOSIZE);
 }
@@ -245,7 +247,7 @@ cv::GComputation Mikiri::gen_computation(bool visualize) {
   return cv::GComputation(
     cv::GIn(bgrin, din),
     visualize ? cv::GOut(bin_r, bin_b, bin_y, visual) :
-                cv::GOut(bin_r, bin_b, bin_y, bgrin)
+                cv::GOut(bin_r, bin_b, bin_y)
   );
 }
 

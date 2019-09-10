@@ -31,7 +31,7 @@ public:
 
 private:
 
-  static constexpr int            dec_magnitude = 2;
+  static constexpr int            dec_magnitude = 4;
   float                           depth_scale;
 
   rs2::pipeline                   pipe;

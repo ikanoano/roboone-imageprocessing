@@ -5,7 +5,7 @@
 
 void printOpponent(const char* pre, const OpponentUnit::OpponentPart &op) {
   if(!op) {
-    std::cout << pre << "none" << std::endl;
+    std::cout << pre << " none" << std::endl;
     return;
   }
   std::cout
@@ -17,7 +17,7 @@ void printOpponent(const char* pre, const OpponentUnit::OpponentPart &op) {
 }
 
 void show_fps() {
-  constexpr int range = 5;
+  constexpr int range = 2;
   static std::deque<std::chrono::system_clock::time_point> cap;
   const auto now = std::chrono::system_clock::now();
   cap.push_back(now);
@@ -36,8 +36,8 @@ int main(int argc, char * argv[]) try {
     if(!s_) continue;   // frame is not yet ready
     show_fps();
     const auto s = s_.value();
-    printOpponent("men", s.men);
-    printOpponent("dou", s.dou);
+    printOpponent("men ", s.men);
+    printOpponent("dou ", s.dou);
     printOpponent("kote", s.kote);
   }
 
