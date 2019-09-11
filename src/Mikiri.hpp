@@ -3,6 +3,8 @@
 
 #include <vector>
 #include <array>
+#include <thread>
+#include <mutex>
 #include <boost/optional.hpp>
 #include <librealsense2/rs.hpp>
 #include <opencv2/opencv.hpp>
@@ -25,6 +27,7 @@ public:
   };
 
   Mikiri(int fps = 30, bool visualize = true);
+  ~Mikiri();
   void                            start() {}; // To be implemented
   void                            stop()  {}; // To be implemented
   boost::optional<men_do_kote_t>  get_men_do_kote();
@@ -34,6 +37,10 @@ private:
   static constexpr int            dec_magnitude = 4;
   float                           depth_scale;
 
+  std::mutex                      last_mdk_mutex;
+  boost::optional<men_do_kote_t>  last_mdk;
+  std::thread                     th;
+  bool                            exit;
   rs2::pipeline                   pipe;
   rs2::config                     cfg;
   rs2::decimation_filter          dec_filter;
@@ -41,6 +48,7 @@ private:
   rs2::align                      align;
   cv::GComputation                color2mdk;
 
+  boost::optional<men_do_kote_t>  body();
   bool                            uv_to_xyz(
       float xyz[3],
       const rs2::depth_frame& frame,
