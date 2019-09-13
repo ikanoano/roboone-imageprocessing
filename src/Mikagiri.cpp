@@ -1,0 +1,41 @@
+#include <random>
+#include <cmath>
+#include <iostream>
+#include "Mikagiri.hpp"
+
+boost::optional<Mikagiri::men_do_kote_t> Mikagiri::get_men_do_kote() {
+  static  auto last = std::chrono::system_clock::now();
+  const   auto now  = std::chrono::system_clock::now();
+  if(now-last < interval) return boost::none;
+  last = now;
+
+  // sometimes return boost::none as if they are not captured
+  int rnd = rand();
+  bool menex = ((rnd>> 0) & 0xFF) < 0xC0;
+  bool douex = ((rnd>> 8) & 0xFF) < 0xC0;
+  bool koteex= ((rnd>>16) & 0xFF) < 0xC0;
+
+  const double t = now.time_since_epoch()/std::chrono::milliseconds(1) / 1000.0;
+  std::vector<target_cand_t>  mens, dos, kotes;
+  decltype(target_cand_t::coord)
+    m = {
+      (float)(0.40 + 0.30*std::sin(1.00*t)),
+      (float)(0.00 + 0.05*std::sin(0.10*t)),
+      (float)(0.20 + 0.05*std::sin(0.33*t))
+    },
+    d = {
+      (float)(0.45 + 0.30*std::sin(1.00*t)),
+      (float)(0.00 + 0.04*std::sin(0.10*t)),
+      (float)(0.15 + 0.06*std::sin(0.33*t))
+    },
+    k = {
+      (float)(0.35 + 0.40*std::sin(1.00*t)),
+      (float)(0.00 + 0.10*std::sin(0.10*t)),
+      (float)(0.18 + 0.10*std::sin(0.33*t))
+    };
+  if(menex)    mens.push_back({m, 10});
+  if(douex)     dos.push_back({d, 10});
+  if(koteex)  kotes.push_back({k, 10});
+
+  return men_do_kote_t{mens, dos, kotes};
+}

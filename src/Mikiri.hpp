@@ -1,5 +1,5 @@
-#ifndef MEN_DO_KOTE
-#define MEN_DO_KOTE
+#ifndef MIKIRI_H
+#define MIKIRI_H
 
 #include <vector>
 #include <array>
@@ -9,28 +9,15 @@
 #include <librealsense2/rs.hpp>
 #include <opencv2/opencv.hpp>
 #include <opencv2/gapi.hpp>
+#include "Mikagiri.hpp"
 
-class Mikiri {
-
+class Mikiri final : public Mikagiri {
 public:
-  const int   FPS;
-  const bool  visualize;
-
-  struct target_cand_t {
-    std::array<float, 3>  coord;
-    int                   area;
-  };
-  struct men_do_kote_t {
-    std::vector<target_cand_t> mens;
-    std::vector<target_cand_t> dos;
-    std::vector<target_cand_t> kotes;
-  };
-
   Mikiri(int fps = 30, bool visualize = true);
-  ~Mikiri();
-  void                            start() {}; // To be implemented
-  void                            stop()  {}; // To be implemented
-  boost::optional<men_do_kote_t>  get_men_do_kote();
+                                  ~Mikiri();
+  void                            start() override {};
+  void                            stop()  override {};
+  boost::optional<men_do_kote_t>  get_men_do_kote() override;
 
 private:
 

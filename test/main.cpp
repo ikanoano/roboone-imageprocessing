@@ -1,6 +1,7 @@
 #include <cstdio>
 #include <deque>
 #include <chrono>
+#include <iostream>
 #include "../src/OpponentUnit.hpp"
 
 void printOpponent(const char* pre, const OpponentUnit::OpponentPart &op) {
@@ -27,11 +28,11 @@ void show_fps() {
   std::cout << "FPS = " << 1.0*cap.size()/range << std::endl;
 }
 
-int main(int argc, char * argv[]) try {
+int main(int argc, char * argv[]) {
 
   OpponentUnit o;
 
-  while (cv::waitKey(1)!='q') {
+  while (true) {
     const auto s_ = o.survey();
     if(!s_) continue;   // frame is not yet ready
     show_fps();
@@ -42,10 +43,4 @@ int main(int argc, char * argv[]) try {
   }
 
   return EXIT_SUCCESS;
-} catch (const rs2::error & e) {
-  std::cerr << "RealSense error calling " << e.get_failed_function() << "(" << e.get_failed_args() << "):\n    " << e.what() << std::endl;
-  return EXIT_FAILURE;
-} catch (const std::exception& e) {
-  std::cerr << e.what() << std::endl;
-  return EXIT_FAILURE;
 }

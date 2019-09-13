@@ -2,7 +2,10 @@
 #define OPPONENT_UNIT
 
 #include <boost/optional.hpp>
-#include "Mikiri.hpp"
+#include "Mikagiri.hpp"
+#ifdef USE_CAMERA
+  #include "Mikiri.hpp"
+#endif
 
 class OpponentUnit {
 public:
@@ -28,7 +31,11 @@ public:
   void stopCamera();
   boost::optional<OpponentModel> survey();
 private:
-  Mikiri m;
+#ifdef USE_CAMERA
+  Mikiri    m;
+#else
+  Mikagiri  m;
+#endif
 };
 
 #endif

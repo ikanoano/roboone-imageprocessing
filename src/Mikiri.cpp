@@ -168,8 +168,7 @@ bool Mikiri::uv_to_xyz(float xyz[3], const rs2::depth_frame& frame, const int u,
 }
 
 Mikiri::Mikiri(int fps, bool visualize) :
-    FPS(fps),
-    visualize(visualize),
+    Mikagiri(fps, visualize),
     last_mdk(boost::none),
     align(RS2_STREAM_COLOR),
     color2mdk(gen_computation(visualize)) {
@@ -203,7 +202,7 @@ Mikiri::Mikiri(int fps, bool visualize) :
   csensor->set_option(RS2_OPTION_ENABLE_AUTO_WHITE_BALANCE, 1);
   csensor->set_option(RS2_OPTION_FRAMES_QUEUE_SIZE, 2);
 
-  cv::namedWindow(visual_window,  cv::WINDOW_AUTOSIZE);
+  if(visualize) cv::namedWindow(visual_window,  cv::WINDOW_AUTOSIZE);
 
   // th is for separating the image processing thread from the main thread.
   // Not for interleaving a processing for each frame.

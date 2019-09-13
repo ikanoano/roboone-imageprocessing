@@ -1,6 +1,5 @@
 #include <algorithm>
 #include "OpponentUnit.hpp"
-#include "Mikiri.hpp"
 
 void OpponentUnit::startCamera() {} // To be implemented
 void OpponentUnit::stopCamera() {}  // To be implemented
