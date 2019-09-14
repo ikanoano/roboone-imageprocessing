@@ -1,6 +1,8 @@
 #ifndef OPPONENT_UNIT
 #define OPPONENT_UNIT
 
+#include <deque>
+#include <chrono>
 #include <boost/optional.hpp>
 #include "Mikagiri.hpp"
 #ifdef USE_CAMERA
@@ -29,13 +31,14 @@ public:
 
   void startCamera();
   void stopCamera();
-  boost::optional<OpponentModel> survey();
+  boost::optional<OpponentModel> survey(std::chrono::milliseconds predict_after);
 private:
 #ifdef USE_CAMERA
   Mikiri    m;
 #else
   Mikagiri  m;
 #endif
+  std::deque<Mikagiri::men_do_kote_t>  hist_mdk;
 };
 
 #endif

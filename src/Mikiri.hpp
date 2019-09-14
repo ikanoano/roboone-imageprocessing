@@ -34,6 +34,7 @@ private:
   rs2::spatial_filter             spat_filter;
   rs2::align                      align;
   cv::GComputation                color2mdk;
+  time_stamp_t                    depth_timestamp_offset;
 
   boost::optional<men_do_kote_t>  body();
   bool                            uv_to_xyz(

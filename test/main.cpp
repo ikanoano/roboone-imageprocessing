@@ -30,10 +30,10 @@ void show_fps() {
 
 int main(int argc, char * argv[]) {
 
-  OpponentUnit o;
+  OpponentUnit o(30, false);
 
   while (true) {
-    const auto s_ = o.survey();
+    const auto s_ = o.survey(std::chrono::milliseconds(30));
     if(!s_) continue;   // frame is not yet ready
     show_fps();
     const auto s = s_.value();
