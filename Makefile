@@ -15,6 +15,10 @@ else
 		OpponentUnit.o
 endif
 
+ifdef DEBUG
+	CPPFLAGS+=-DDEBUG_PREDICT
+endif
+
 ifdef PROF
 	CPPFLAGS+=-pg -O2
 else

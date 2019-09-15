@@ -1,7 +1,7 @@
 #include <algorithm>
+#include <boost/range/adaptor/reversed.hpp>
 #include "OpponentUnit.hpp"
 #include "EigenUtil.hpp"
-#include <iostream>
 
 void OpponentUnit::startCamera() {} // To be implemented
 void OpponentUnit::stopCamera() {}  // To be implemented
@@ -14,8 +14,9 @@ boost::optional<OpponentUnit::OpponentModel> OpponentUnit::survey(
 
 #ifdef DEBUG_PREDICT
   std::cout <<
-    "latency=" <<
+    "latency between capturing and get_men_do_kote =" <<
     std::chrono::duration_cast<std::chrono::milliseconds>(now-mdk.frame_time_stamp).count() <<
+    " ms" <<
     std::endl;
 #endif
 
@@ -41,13 +42,15 @@ boost::optional<OpponentUnit::OpponentModel> OpponentUnit::survey(
 
   // ROBOKEN's Prophet
   const auto predict_at = now + predict_after;
-  const auto predict = [&](const auto &pick) -> OpponentPart {
+  const auto predict = [&](const auto &pick) -> boost::optional<OpponentPart> {
     typedef std::chrono::duration<double, std::milli> double_ms;
     std::vector<double> t, x, y, z;
+    time_stamp_t last_at;
     // extract existing men/dou/kote history
-    for (auto&& mdk: hist_mdk) {
+    for (auto&& mdk: hist_mdk) { // order = old -> new
       const auto *datotsu_part = pick(mdk);
       if(!datotsu_part) continue;   // not captured this time
+      last_at = mdk.frame_time_stamp;  // store the timestamp of the last capture
       const std::array<float,3> &target = datotsu_part->coord;
       // shift t around t=0 to process acculate curve fitting
       const double shifted = std::chrono::duration_cast<double_ms>(mdk.frame_time_stamp - now + obsolete_th/2).count();
@@ -59,30 +62,31 @@ boost::optional<OpponentUnit::OpponentModel> OpponentUnit::survey(
     }
     switch (t.size()) {
       case 0: return boost::none;   // not captured
-      case 1: return {{(float)x[0], (float)y[0], (float)z[0]}}; // return the last position as we don't know except it
+    //case 1: return {{(float)x[0], (float)y[0], (float)z[0]}}; // return the last position as we don't know except it
       default: // predict position using recent knowledge
         // polynomial curve fitting: get t-x, t-y and t-z curve
+        constexpr size_t max_degree = 3;
         const auto
-          xcurve = EigenUtil::PolyFit(t, x, std::min(t.size()-1, (size_t)5)),
-          ycurve = EigenUtil::PolyFit(t, y, std::min(t.size()-1, (size_t)5)),
-          zcurve = EigenUtil::PolyFit(t, z, std::min(t.size()-1, (size_t)5));
+          xcurve = EigenUtil::PolyFit(t, x, std::min(t.size()-1, max_degree)),
+          ycurve = EigenUtil::PolyFit(t, y, std::min(t.size()-1, max_degree)),
+          zcurve = EigenUtil::PolyFit(t, z, std::min(t.size()-1, max_degree));
 
-        // solve with predict_at
         const double shifted = std::chrono::duration_cast<double_ms>(predict_at - now + obsolete_th/2).count();
-#ifdef DEBUG_PREDICT
-        std::cout <<
-          "last x=" <<
-          x.back() <<
-          "\tpredict x=" <<
-          boost::math::tools::evaluate_polynomial(xcurve.data().data(), shifted, xcurve.size()) <<
-          std::endl;
-#endif
-        return {{
-          (float)boost::math::tools::evaluate_polynomial(xcurve.data().data(), shifted, xcurve.size()),
-          (float)boost::math::tools::evaluate_polynomial(ycurve.data().data(), shifted, ycurve.size()),
-          (float)boost::math::tools::evaluate_polynomial(zcurve.data().data(), shifted, zcurve.size())
-        }};
-        break;
+        return OpponentPart {
+          .last     = {{
+            (float)x.back(),
+            (float)y.back(),
+            (float)z.back(),
+          }},
+          .last_at  = last_at,
+          .pred     = {{
+            // solve with predict_at
+            (float)boost::math::tools::evaluate_polynomial(xcurve.data().data(), shifted, xcurve.size()),
+            (float)boost::math::tools::evaluate_polynomial(ycurve.data().data(), shifted, ycurve.size()),
+            (float)boost::math::tools::evaluate_polynomial(zcurve.data().data(), shifted, zcurve.size())
+          }},
+          .pred_at  = predict_at
+        };
     }
   };
 
