@@ -33,7 +33,7 @@ boost::optional<OpponentUnit::OpponentModel> OpponentUnit::survey(
   hist_mdk.push_back(mdk);
 
   // purge obsoleted history
-  constexpr auto obsolete_th  = std::chrono::milliseconds(200);
+  constexpr auto obsolete_th  = std::chrono::milliseconds(500);
   const     auto due          = mdk.frame_time_stamp - obsolete_th;
   while(hist_mdk.front().frame_time_stamp < due) {
     hist_mdk.pop_front();
@@ -65,7 +65,7 @@ boost::optional<OpponentUnit::OpponentModel> OpponentUnit::survey(
     //case 1: return {{(float)x[0], (float)y[0], (float)z[0]}}; // return the last position as we don't know except it
       default: // predict position using recent knowledge
         // polynomial curve fitting: get t-x, t-y and t-z curve
-        constexpr size_t max_degree = 3;
+        constexpr size_t max_degree = 2;
         const auto
           xcurve = EigenUtil::PolyFit(t, x, std::min(t.size()-1, max_degree)),
           ycurve = EigenUtil::PolyFit(t, y, std::min(t.size()-1, max_degree)),
