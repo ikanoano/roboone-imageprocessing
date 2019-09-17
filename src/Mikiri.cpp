@@ -11,6 +11,7 @@
 
 // nonblocking
 boost::optional<Mikiri::men_do_kote_t> Mikiri::get_men_do_kote () {
+  if(visualize && cv::waitKey(1)=='q') {exit=true;} // imshow needs waitKey to be updated
   std::lock_guard lock(last_mdk_mutex);
   return std::exchange(last_mdk, boost::none);
 }
@@ -249,7 +250,7 @@ cv::GComputation Mikiri::gen_computation(bool visualize) {
     red_thresh_up2    (cv::Scalar(  6, 255, 255)),
     blue_thresh_low   (cv::Scalar( 98, 128,  48)),
     blue_thresh_up    (cv::Scalar(128, 255, 255)),
-    yellow_thresh_low (cv::Scalar( 20, 128,  96)),
+    yellow_thresh_low (cv::Scalar( 20, 128, 160)),
     yellow_thresh_up  (cv::Scalar( 33, 255, 255));
   const cv::GMat
     bgrin, din;
@@ -277,7 +278,7 @@ cv::GComputation Mikiri::gen_computation(bool visualize) {
     blur_y    (cv::gapi::blur(masked_y, cv::Size( 5,  5))),
     bin_r     (std::get<0>(cv::gapi::threshold(blur_r, cv::GScalar(255), cv::THRESH_OTSU))),
     bin_b     (std::get<0>(cv::gapi::threshold(blur_b, cv::GScalar(255), cv::THRESH_OTSU))),
-    bin_y     (std::get<0>(cv::gapi::threshold(blur_y, cv::GScalar(255), cv::THRESH_OTSU))),
+    bin_y     (cv::gapi::cmpGT(blur_y, cv::GScalar(127))),
     merge     (cv::gapi::merge3(bin_b, bin_y, bin_r)),
     // visualize
     mresize   (cv::gapi::resize(merge, cv::Size(), resize_scale_inv, resize_scale_inv)),
