@@ -19,6 +19,10 @@ ifdef DEBUG
 	CPPFLAGS+=-DDEBUG_PREDICT
 endif
 
+ifdef EVAL
+	CPPFLAGS+=-DEVAL_PREDICTION
+endif
+
 ifdef PROF
 	CPPFLAGS+=-pg -O2
 else

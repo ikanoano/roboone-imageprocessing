@@ -9,18 +9,22 @@ void show_fps() {
   static std::deque<std::chrono::system_clock::time_point> cap;
   const auto now = std::chrono::system_clock::now();
   cap.push_back(now);
-  while(cap.front() < now-std::chrono::seconds(range)) {
+  while(cap.front() <= now-std::chrono::seconds(range)) {
     cap.pop_front();
   }
   std::cout << "FPS = " << 1.0*cap.size()/range << std::endl;
 }
 
 int main(int argc, char * argv[]) {
-
-  OpponentUnit o(30, false);
+  constexpr bool visualize = true;
+  OpponentUnit o(30, visualize);
 
   while (true) {
     const auto s_ = o.survey(std::chrono::milliseconds(30));
+
+#ifdef EVAL_PREDICTION
+    continue;
+#endif
     if(!s_) continue;   // frame is not yet ready
     show_fps();
     const auto s = s_.value();

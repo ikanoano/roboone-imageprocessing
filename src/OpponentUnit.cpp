@@ -42,7 +42,7 @@ boost::optional<OpponentUnit::OpponentModel> OpponentUnit::survey(
 
   // ROBOKEN's Prophet
   const auto predict_at = now + predict_after;
-  const auto predict = [&](const auto &pick) -> boost::optional<OpponentPart> {
+  const auto predict = [&](const auto &pick, bool dump) -> boost::optional<OpponentPart> {
     typedef std::chrono::duration<double, std::milli> double_ms;
     std::vector<double> t, x, y, z;
     time_stamp_t last_at;
@@ -71,6 +71,19 @@ boost::optional<OpponentUnit::OpponentModel> OpponentUnit::survey(
           ycurve = EigenUtil::PolyFit(t, y, std::min(t.size()-1, max_degree)),
           zcurve = EigenUtil::PolyFit(t, z, std::min(t.size()-1, max_degree));
 
+#ifdef EVAL_PREDICTION
+        // dump
+        // last_t last_x xcurve diff_t  ->  xcurve(last_t - diff_t) ~= last_x
+        if(dump) {
+          std::cout
+            << std::chrono::time_point_cast<std::chrono::milliseconds>(last_at).time_since_epoch().count() << ", "
+            << x.back() << ", "
+            << xcurve << ", "
+            << std::chrono::time_point_cast<std::chrono::milliseconds>(now - obsolete_th/2).time_since_epoch().count()
+            << std::endl;
+        }
+#endif
+
         const double shifted = std::chrono::duration_cast<double_ms>(predict_at - now + obsolete_th/2).count();
         return OpponentPart {
           .last     = {{
@@ -97,9 +110,13 @@ boost::optional<OpponentUnit::OpponentModel> OpponentUnit::survey(
 
   // predict men/dou/kote
   OpponentModel om;
-  om.men  = predict(pick_men);
-  om.dou  = predict(pick_dou);
-  om.kote = predict(pick_kote);
+#ifdef EVAL_PREDICTION
+  om.men  = predict(pick_men, true);
+#else
+  om.men  = predict(pick_men, false);
+#endif
+  om.dou  = predict(pick_dou, false);
+  om.kote = predict(pick_kote,false);
 
   // TODO add some process to get OpponentBehavior ...
   om.behavior = OpponentBehavior::STABLE_NEAR;
