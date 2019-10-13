@@ -5,13 +5,13 @@
 #include <utility>
 #include <tuple>
 #include <librealsense2/rsutil.h>
-#include <opencv2/opencv.hpp>
 #include <opencv2/gapi/core.hpp>
 #include <opencv2/gapi/imgproc.hpp>
 #include "Mikiri.hpp"
 
 // nonblocking
 boost::optional<Mikiri::men_do_kote_t> Mikiri::get_men_do_kote () {
+  if(visualize && cv::waitKey(1)=='q') {exit=true;} // imshow needs waitKey to be updated
   std::lock_guard lock(last_mdk_mutex);
   return std::exchange(last_mdk, boost::none);
 }
@@ -143,7 +143,9 @@ boost::optional<Mikiri::men_do_kote_t> Mikiri::body () {
     cv::imshow(visual_window, dst);
   }
 
-  return men_do_kote_t{mens, dos, kotes};
+  const auto timestamp =
+    depth_timestamp_offset + std::chrono::microseconds((long)(depth_rs.get_timestamp()*1000));
+  return men_do_kote_t{timestamp, mens, dos, kotes};
 }
 
 bool Mikiri::uv_to_xyz(float xyz[3], const rs2::depth_frame& frame, const int u, const int v) {
@@ -186,6 +188,13 @@ Mikiri::Mikiri(int fps, bool visualize) :
 
   // Instruct pipeline to start streaming with the requested configuration
   auto profile = pipe.start(cfg);
+  rs2::frameset frame_cd;
+  time_stamp_t timestamp; // volatile is not allowed
+  do {
+    timestamp = std::chrono::system_clock::now();
+    // always false; prevent from optimizing timestamp
+    if(depth_timestamp_offset > timestamp) break;
+  } while (!pipe.poll_for_frames(&frame_cd));
 
   // Set short_range accurate preset
   const auto dsensor = profile.get_device().first<rs2::depth_sensor>();
@@ -195,18 +204,23 @@ Mikiri::Mikiri(int fps, bool visualize) :
   depth_scale = dsensor.get_depth_scale();
 
   // Set auto exposure and auto white balance
-  rs2::frameset data = pipe.wait_for_frames();
-  const auto frame   = data.get_color_frame();
-  const auto csensor = rs2::sensor_from_frame(frame);
+  rs2::video_frame color_rs = frame_cd.get_color_frame();
+  const auto csensor = rs2::sensor_from_frame(color_rs);
   csensor->set_option(RS2_OPTION_ENABLE_AUTO_EXPOSURE, 1);
   csensor->set_option(RS2_OPTION_ENABLE_AUTO_WHITE_BALANCE, 1);
   csensor->set_option(RS2_OPTION_FRAMES_QUEUE_SIZE, 2);
+
+  // Set timestamp offset
+  rs2::depth_frame depth_rs = frame_cd.get_depth_frame();
+  double relative_timestamp_ms = depth_rs.get_timestamp();
+  depth_timestamp_offset = timestamp -
+    std::chrono::microseconds((long)(relative_timestamp_ms*1000));
 
   if(visualize) cv::namedWindow(visual_window,  cv::WINDOW_AUTOSIZE);
 
   // th is for separating the image processing thread from the main thread.
   // Not for interleaving a processing for each frame.
-  // Keep it runs in 1/FPS seconds not to drop the frame.
+  // Keep it runs in 1/FPS seconds not to drop any frame.
   exit = false;
   th = std::thread([this]() {
     constexpr auto w = std::chrono::milliseconds(1);
@@ -236,7 +250,7 @@ cv::GComputation Mikiri::gen_computation(bool visualize) {
     red_thresh_up2    (cv::Scalar(  6, 255, 255)),
     blue_thresh_low   (cv::Scalar( 98, 128,  48)),
     blue_thresh_up    (cv::Scalar(128, 255, 255)),
-    yellow_thresh_low (cv::Scalar( 20, 128,  96)),
+    yellow_thresh_low (cv::Scalar( 20, 128, 160)),
     yellow_thresh_up  (cv::Scalar( 33, 255, 255));
   const cv::GMat
     bgrin, din;
@@ -264,7 +278,7 @@ cv::GComputation Mikiri::gen_computation(bool visualize) {
     blur_y    (cv::gapi::blur(masked_y, cv::Size( 5,  5))),
     bin_r     (std::get<0>(cv::gapi::threshold(blur_r, cv::GScalar(255), cv::THRESH_OTSU))),
     bin_b     (std::get<0>(cv::gapi::threshold(blur_b, cv::GScalar(255), cv::THRESH_OTSU))),
-    bin_y     (std::get<0>(cv::gapi::threshold(blur_y, cv::GScalar(255), cv::THRESH_OTSU))),
+    bin_y     (cv::gapi::cmpGT(blur_y, cv::GScalar(127))),
     merge     (cv::gapi::merge3(bin_b, bin_y, bin_r)),
     // visualize
     mresize   (cv::gapi::resize(merge, cv::Size(), resize_scale_inv, resize_scale_inv)),

@@ -11,10 +11,12 @@ public:
     std::array<float, 3>  coord;
     int                   area;
   };
+  typedef std::chrono::system_clock::time_point time_stamp_t;
   struct men_do_kote_t {
-    std::vector<target_cand_t> mens;
-    std::vector<target_cand_t> dos;
-    std::vector<target_cand_t> kotes;
+    time_stamp_t                frame_time_stamp;
+    std::vector<target_cand_t>  mens;
+    std::vector<target_cand_t>  dos;
+    std::vector<target_cand_t>  kotes;
   };
 
   const int   FPS;

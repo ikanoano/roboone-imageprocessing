@@ -1,20 +1,30 @@
+CPPFLAGS    = -std=c++17 -Wall -Wextra -Wdisabled-optimization -g -I/usr/include/opencv4
 ifdef CAMERA
 	OBJS        =\
 		Mikagiri.o\
 		Mikiri.o\
+		PolyFit.o\
 		OpponentUnit.o
 	LIBS        = -lrealsense2 -lopencv_core -lopencv_highgui -lopencv_imgproc -lopencv_gapi -pthread
-	CPPFLAGS    = -std=c++17 -Wall -I /usr/include/opencv4 -mtune=native -march=native -mfpmath=both
+	CPPFLAGS   += -mtune=native -march=native -mfpmath=both
 	CPPFLAGS   += -DUSE_CAMERA
 else
 	OBJS        =\
 		Mikagiri.o\
+		PolyFit.o\
 		OpponentUnit.o
-	CPPFLAGS    = -std=c++17 -Wall
+endif
+
+ifdef DEBUG
+	CPPFLAGS+=-DDEBUG_PREDICT
+endif
+
+ifdef EVAL
+	CPPFLAGS+=-DEVAL_PREDICTION
 endif
 
 ifdef PROF
-	CPPFLAGS+=-pg -O2 -g
+	CPPFLAGS+=-pg -O2
 else
 	CPPFLAGS+=-O3
 endif
@@ -28,4 +38,4 @@ imtest: $(OBJS) test/main.cpp
 	g++ $(CPPFLAGS) $(LIBS) $^ -o $@
 
 clean:
-	rm -f $(OBJS) imtest
+	rm -f *.o imtest
