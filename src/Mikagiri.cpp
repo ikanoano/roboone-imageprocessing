@@ -25,17 +25,17 @@ boost::optional<Mikagiri::men_do_kote_t> Mikagiri::get_men_do_kote() {
   std::normal_distribution<float> dist(0.0, 0.005);
   decltype(target_cand_t::coord)
     m = {
-      (float)(0.40 + 0.30*std::sin(1.00*t)) + dist(engine),
+      (float)(0.40 + 0.30*std::sin(3.00*t)) + dist(engine),
       (float)(0.00 + 0.05*std::sin(0.10*t)) + dist(engine),
       (float)(0.20 + 0.05*std::sin(0.33*t)) + dist(engine)
     },
     d = {
-      (float)(0.45 + 0.30*std::sin(1.00*t)) + dist(engine),
+      (float)(0.45 + 0.30*std::sin(3.00*t)) + dist(engine),
       (float)(0.00 + 0.04*std::sin(0.10*t)) + dist(engine),
       (float)(0.15 + 0.06*std::sin(0.33*t)) + dist(engine)
     },
     k = {
-      (float)(0.35 + 0.40*std::sin(1.00*t)) + dist(engine),
+      (float)(0.35 + 0.40*std::sin(3.00*t)) + dist(engine),
       (float)(0.00 + 0.10*std::sin(0.10*t)) + dist(engine),
       (float)(0.18 + 0.10*std::sin(0.33*t)) + dist(engine)
     };

@@ -1,4 +1,4 @@
-CPPFLAGS    = -std=c++17 -Wall -g -I/usr/include/opencv4
+CPPFLAGS    = -std=c++17 -Wall -Wextra -Wdisabled-optimization -g -I/usr/include/opencv4
 ifdef CAMERA
 	OBJS        =\
 		Mikagiri.o\

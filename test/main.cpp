@@ -15,7 +15,7 @@ void show_fps() {
   std::cout << "FPS = " << 1.0*cap.size()/range << std::endl;
 }
 
-int main(int argc, char * argv[]) {
+int main() {
   constexpr bool visualize = true;
   OpponentUnit o(30, visualize);
 
