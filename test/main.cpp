@@ -2,7 +2,7 @@
 #include <deque>
 #include <chrono>
 #include <iostream>
-#include "../src/OpponentUnit.hpp"
+#include "../include/OpponentUnit.hpp"
 
 void show_fps() {
   constexpr int range = 2;

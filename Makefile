@@ -1,41 +1,46 @@
-CPPFLAGS    = -std=c++17 -Wall -Wextra -Wdisabled-optimization -g -I/usr/include/opencv4
+CPPFLAGS:=-std=c++17 -Wall -Wextra -Wdisabled-optimization -g -I/usr/include/opencv4 -MMD -MP
+BLDDIR  :=build
+OBJS:=\
+	Mikagiri.o\
+	PolyFit.o\
+	OpponentUnit.o
 ifdef CAMERA
-	OBJS        =\
-		Mikagiri.o\
-		Mikiri.o\
-		PolyFit.o\
-		OpponentUnit.o
-	LIBS        = -lrealsense2 -lopencv_core -lopencv_highgui -lopencv_imgproc -lopencv_gapi -pthread
-	CPPFLAGS   += -mtune=native -march=native -mfpmath=both
-	CPPFLAGS   += -DUSE_CAMERA
-else
-	OBJS        =\
-		Mikagiri.o\
-		PolyFit.o\
-		OpponentUnit.o
+  OBJS    +=Mikiri.o
+  LIBS    :=-lrealsense2 -lopencv_core -lopencv_highgui -lopencv_imgproc -lopencv_gapi -pthread
+  CPPFLAGS+=-mtune=native -march=native -mfpmath=both
+  CPPFLAGS+=-DUSE_CAMERA
 endif
+OBJS:=$(addprefix $(BLDDIR)/, $(OBJS))
+DEPS:=$(patsubst %.o,%.d, $(OBJS))
 
 ifdef DEBUG
-	CPPFLAGS+=-DDEBUG_PREDICT
+  CPPFLAGS+=-DDEBUG_PREDICT
 endif
 
 ifdef EVAL
-	CPPFLAGS+=-DEVAL_PREDICTION
+  CPPFLAGS+=-DEVAL_PREDICTION
 endif
 
 ifdef PROF
-	CPPFLAGS+=-pg -O2
+  CPPFLAGS+=-pg -O2
 else
-	CPPFLAGS+=-O3
+  CPPFLAGS+=-O3
 endif
 
 all: $(OBJS)
 
-%.o: src/%.cpp
-	g++ $(CPPFLAGS) $(LIBS) $^ -c
+$(BLDDIR)/%.o: src/%.cpp
+	-mkdir -p $(BLDDIR)
+	g++ $(CPPFLAGS) $(LIBS) $< -c -o $@
 
-imtest: $(OBJS) test/main.cpp
+$(BLDDIR)/%.o: test/%.cpp
+	-mkdir -p $(BLDDIR)
+	g++ $(CPPFLAGS) $(LIBS) $< -c -o $@
+
+imtest: $(OBJS) $(BLDDIR)/main.o
 	g++ $(CPPFLAGS) $(LIBS) $^ -o $@
 
+-include $(DEPS)
+
 clean:
-	rm -f *.o imtest
+	rm -rf $(BLDDIR) imtest gmon.out

@@ -2,7 +2,7 @@
 #include <cmath>
 #include <random>
 #include <iostream>
-#include "Mikagiri.hpp"
+#include "../include/Mikagiri.hpp"
 
 boost::optional<Mikagiri::men_do_kote_t> Mikagiri::get_men_do_kote() {
   static  auto last = std::chrono::system_clock::now();

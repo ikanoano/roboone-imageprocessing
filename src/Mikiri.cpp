@@ -7,7 +7,7 @@
 #include <librealsense2/rsutil.h>
 #include <opencv2/gapi/core.hpp>
 #include <opencv2/gapi/imgproc.hpp>
-#include "Mikiri.hpp"
+#include "../include/Mikiri.hpp"
 
 // nonblocking
 boost::optional<Mikiri::men_do_kote_t> Mikiri::get_men_do_kote () {

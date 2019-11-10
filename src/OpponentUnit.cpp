@@ -1,7 +1,7 @@
 #include <algorithm>
 #include <boost/range/adaptor/reversed.hpp>
-#include "OpponentUnit.hpp"
-#include "EigenUtil.hpp"
+#include "../include/OpponentUnit.hpp"
+#include "../include/EigenUtil.hpp"
 
 void OpponentUnit::startCamera() {} // To be implemented
 void OpponentUnit::stopCamera() {}  // To be implemented

@@ -20,7 +20,7 @@
 
 #include <iostream>
 #include <eigen3/Eigen/QR>
-#include "EigenUtil.hpp"
+#include "../include/EigenUtil.hpp"
 
 boost::math::tools::polynomial<double> EigenUtil::PolyFit(
     const std::vector<double> &xv,
