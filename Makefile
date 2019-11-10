@@ -1,5 +1,6 @@
 CPPFLAGS:=-std=c++17 -Wall -Wextra -Wdisabled-optimization -g -I/usr/include/opencv4 -MMD -MP
 BLDDIR  :=build
+TARGET  :=librobokenip.a
 OBJS:=\
 	Mikagiri.o\
 	PolyFit.o\
@@ -27,7 +28,10 @@ else
   CPPFLAGS+=-O3
 endif
 
-all: $(OBJS)
+all: $(TARGET)
+
+$(TARGET): $(OBJS)
+	ar rcs $@ $^
 
 $(BLDDIR)/%.o: src/%.cpp
 	-mkdir -p $(BLDDIR)
@@ -37,10 +41,10 @@ $(BLDDIR)/%.o: test/%.cpp
 	-mkdir -p $(BLDDIR)
 	g++ $(CPPFLAGS) $(LIBS) $< -c -o $@
 
-imtest: $(OBJS) $(BLDDIR)/main.o
+imtest: $(BLDDIR)/main.o $(TARGET)
 	g++ $(CPPFLAGS) $(LIBS) $^ -o $@
 
 -include $(DEPS)
 
 clean:
-	rm -rf $(BLDDIR) imtest gmon.out
+	rm -rf $(BLDDIR) $(TARGET) imtest gmon.out
