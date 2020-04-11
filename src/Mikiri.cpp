@@ -149,14 +149,21 @@ boost::optional<Mikiri::men_do_kote_t> Mikiri::body () {
 }
 
 bool Mikiri::uv_to_xyz(float xyz[3], const rs2::depth_frame& frame, const int u, const int v) {
+    const int fwidth  = frame.get_width();
+    const int fheight = frame.get_height();
     float dist = 0.0f;
     int validnum = 0;
-    for (int du = -2; du <= 2; du++)
-    for (int dv = -2; dv <= 2; dv++) {
-      const float tmp = frame.get_distance(u+du, v+dv);
-      if(tmp == 0.0f) continue;
-      validnum++;
-      dist += tmp;
+    for (int du = -2; du <= 2; du++) {
+      const int cu = u+du;
+      if(cu<0 || cu>=fwidth) continue;
+      for (int dv = -2; dv <= 2; dv++) {
+        const int cv = v+dv;
+        if(cv<0 || cv>=fheight) continue;
+        const float tmp = frame.get_distance(cu, cv);
+        if(tmp == 0.0f) continue;
+        validnum++;
+        dist += tmp;
+      }
     }
     if(validnum==0) return false;
     dist /= validnum;
@@ -164,7 +171,7 @@ bool Mikiri::uv_to_xyz(float xyz[3], const rs2::depth_frame& frame, const int u,
     // Deproject uv to xyz
     const rs2_intrinsics intr =
       frame.get_profile().as<rs2::video_stream_profile>().get_intrinsics();
-    const float uv[] = {(const float)u, (const float)v};
+    const float uv[] = {(float)u, (float)v};
     rs2_deproject_pixel_to_point(xyz, &intr, uv, dist);
     return true;
 }
