@@ -54,7 +54,7 @@ private:
     resize_scale_depth      = resize_scale*dec_magnitude,
     resize_scale_inv        = 1/resize_scale,
     resize_scale_inv_depth  = 1/resize_scale_depth;
-  static constexpr float hard_offset[3] = {-0.18, 0.08, 0.48};
+  static constexpr float hard_offset[3] = {0.075, 0.132, 0.01};
   const char* visual_window = "MEN(red) DO(blue) KOTE(green) Visualizer";
 };
 
@@ -69,10 +69,16 @@ inline cv::Point2f Mikiri::contour_center(const std::vector<cv::Point> &contour)
 }
 
 inline Mikiri::target_cand_t Mikiri::conv_tct(const target_cand_t &tc) {
+  /*
+     ______o_____   ^ z
+     |__      __|   |
+       |______|     ×--> x
+          |         y
+  */
   return {
     { tc.coord[2]+hard_offset[0],
-      tc.coord[1]+hard_offset[1],
-     -tc.coord[0]+hard_offset[2]},
+     -tc.coord[0]+hard_offset[1],
+     -tc.coord[1]+hard_offset[2]},
     tc.area
   };
 }
