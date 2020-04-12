@@ -41,7 +41,7 @@ boost::math::tools::polynomial<double> EigenUtil::PolyFit(
   // solve for linear least squares fit
   result = A.householderQr().solve(yv_mapped);
 
-  return boost::math::tools::polynomial<double>(result.data(), result.data()+result.rows()*result.cols());
+  return boost::math::tools::polynomial<double>(result.data(), result.rows()*result.cols()-1);
 }
 
 /*
