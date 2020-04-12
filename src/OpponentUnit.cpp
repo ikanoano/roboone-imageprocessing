@@ -42,7 +42,11 @@ boost::optional<OpponentUnit::OpponentModel> OpponentUnit::survey(
 
   // ROBOKEN's Prophet
   const auto predict_at = now + predict_after;
-  const auto predict = [&](const auto &pick, bool dump) -> boost::optional<OpponentPart> {
+  const auto predict = [&](const auto &pick
+#ifdef EVAL_PREDICTION
+      , bool dump
+#endif
+      ) -> boost::optional<OpponentPart> {
     typedef std::chrono::duration<double, std::milli> double_ms;
     std::vector<double> t, x, y, z;
     time_stamp_t last_at;
@@ -112,11 +116,13 @@ boost::optional<OpponentUnit::OpponentModel> OpponentUnit::survey(
   OpponentModel om;
 #ifdef EVAL_PREDICTION
   om.men  = predict(pick_men, true);
-#else
-  om.men  = predict(pick_men, false);
-#endif
   om.dou  = predict(pick_dou, false);
   om.kote = predict(pick_kote,false);
+#else
+  om.men  = predict(pick_men);
+  om.dou  = predict(pick_dou);
+  om.kote = predict(pick_kote);
+#endif
 
   // TODO add some process to get OpponentBehavior ...
   om.behavior = OpponentBehavior::STABLE_NEAR;
