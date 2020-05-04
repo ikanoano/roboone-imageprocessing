@@ -5,8 +5,7 @@
 
 void OpponentUnit::startCamera() {} // To be implemented
 void OpponentUnit::stopCamera() {}  // To be implemented
-boost::optional<OpponentUnit::OpponentModel> OpponentUnit::survey(
-    std::chrono::milliseconds predict_after) {
+boost::optional<OpponentUnit::OpponentModel> OpponentUnit::survey() {
   const auto now = std::chrono::system_clock::now();
   auto mdk_ = m.get_men_do_kote();
   if(!mdk_) return boost::none;   // frame is not yet ready
@@ -41,13 +40,13 @@ boost::optional<OpponentUnit::OpponentModel> OpponentUnit::survey(
   }
 
   // ROBOKEN's Prophet
-  const auto predict_at = now + predict_after;
   const auto predict = [&](const auto &pick
 #ifdef EVAL_PREDICTION
       , bool dump
 #endif
       ) -> boost::optional<OpponentPart> {
     typedef std::chrono::duration<double, std::milli> double_ms;
+    const auto   curve_0 = now - obsolete_th/2;
     std::vector<double> t, x, y, z;
     time_stamp_t last_at;
     // extract existing men/dou/kote history
@@ -57,7 +56,7 @@ boost::optional<OpponentUnit::OpponentModel> OpponentUnit::survey(
       last_at = mdk.frame_time_stamp;  // store the timestamp of the last capture
       const std::array<float,3> &target = datotsu_part->coord;
       // shift t around t=0 to process acculate curve fitting
-      const double shifted = std::chrono::duration_cast<double_ms>(mdk.frame_time_stamp - now + obsolete_th/2).count();
+      const double shifted = std::chrono::duration_cast<double_ms>(mdk.frame_time_stamp - curve_0).count();
       // register recent captured position & time
       t.push_back(shifted);
       x.push_back(target[0]);
@@ -66,7 +65,6 @@ boost::optional<OpponentUnit::OpponentModel> OpponentUnit::survey(
     }
     switch (t.size()) {
       case 0: return boost::none;   // not captured
-    //case 1: return {{(float)x[0], (float)y[0], (float)z[0]}}; // return the last position as we don't know except it
       default: // predict position using recent knowledge
         // polynomial curve fitting: get t-x, t-y and t-z curve
         constexpr size_t max_degree = 2;
@@ -74,6 +72,17 @@ boost::optional<OpponentUnit::OpponentModel> OpponentUnit::survey(
           xcurve = EigenUtil::PolyFit(t, x, std::min(t.size()-1, max_degree)),
           ycurve = EigenUtil::PolyFit(t, y, std::min(t.size()-1, max_degree)),
           zcurve = EigenUtil::PolyFit(t, z, std::min(t.size()-1, max_degree));
+
+        return OpponentPart {
+          .last     = {{
+            (float)x.back(),
+            (float)y.back(),
+            (float)z.back(),
+          }},
+          .last_at  = last_at,
+          .curve    = {{xcurve, ycurve, zcurve}},
+          .curve_0  = curve_0,
+        };
 
 #ifdef EVAL_PREDICTION
         // dump
@@ -87,23 +96,6 @@ boost::optional<OpponentUnit::OpponentModel> OpponentUnit::survey(
             << std::endl;
         }
 #endif
-
-        const double shifted = std::chrono::duration_cast<double_ms>(predict_at - now + obsolete_th/2).count();
-        return OpponentPart {
-          .last     = {{
-            (float)x.back(),
-            (float)y.back(),
-            (float)z.back(),
-          }},
-          .last_at  = last_at,
-          .pred     = {{
-            // solve with predict_at
-            (float)boost::math::tools::evaluate_polynomial(xcurve.data().data(), shifted, xcurve.size()),
-            (float)boost::math::tools::evaluate_polynomial(ycurve.data().data(), shifted, ycurve.size()),
-            (float)boost::math::tools::evaluate_polynomial(zcurve.data().data(), shifted, zcurve.size())
-          }},
-          .pred_at  = predict_at
-        };
     }
   };
 
