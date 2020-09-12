@@ -11,7 +11,12 @@
 
 // nonblocking
 boost::optional<Mikiri::men_do_kote_t> Mikiri::get_men_do_kote () {
-  if(visualize && cv::waitKey(1)=='q') {exit=true;} // imshow needs waitKey to be updated
+  if(visualize) {
+    if(cv::waitKey(1)=='q') {exit=true;} // imshow needs waitKey to be updated
+    std::lock_guard lock(visual_mutex);
+    if(visual_updated) {cv::imshow(visual_window, visual);}
+    visual_updated=false;
+  }
   std::lock_guard lock(last_mdk_mutex);
   return std::exchange(last_mdk, boost::none);
 }
@@ -137,10 +142,11 @@ boost::optional<Mikiri::men_do_kote_t> Mikiri::body () {
     cv::Mat rot_mat = getRotationMatrix2D(src_center, -90, 1.0);
     rot_mat.at<double>(0,2) += -visual_ext.cols/2 + visual_ext.rows/2;
     rot_mat.at<double>(1,2) += -visual_ext.rows/2 + visual_ext.cols/2;
-    cv::Mat dst;
-    cv::warpAffine(visual_ext, dst, rot_mat, cv::Size(visual_ext.rows,visual_ext.cols));
 
-    cv::imshow(visual_window, dst);
+    std::lock_guard lock(visual_mutex);
+    cv::warpAffine(visual_ext, visual, rot_mat, cv::Size(visual_ext.rows,visual_ext.cols));
+    assert(visual.size().height>0 && visual.size().width>0);
+    visual_updated = true;
   }
 
   const auto timestamp =
@@ -180,7 +186,8 @@ Mikiri::Mikiri(int fps, bool visualize) :
     Mikagiri(fps, visualize),
     last_mdk(boost::none),
     align(RS2_STREAM_COLOR),
-    color2mdk(gen_computation(visualize)) {
+    color2mdk(gen_computation(visualize)),
+    visual_updated(false) {
   std::cout << "CV version: " << CV_VERSION          << std::endl;
   std::cout << "RS version: " << RS2_API_VERSION_STR << std::endl;
 
@@ -194,9 +201,11 @@ Mikiri::Mikiri(int fps, bool visualize) :
   spat_filter.set_option(RS2_OPTION_HOLES_FILL, 1); // 1 = 2 pix-radius fill
 
   // Instruct pipeline to start streaming with the requested configuration
+  std::cout << "pipe.start " << std::endl;
   auto profile = pipe.start(cfg);
   rs2::frameset frame_cd;
   time_stamp_t timestamp; // volatile is not allowed
+  std::cout << "polling for the first frame" << std::endl;
   do {
     timestamp = std::chrono::system_clock::now();
     // always false; prevent from optimizing timestamp
@@ -223,6 +232,7 @@ Mikiri::Mikiri(int fps, bool visualize) :
   depth_timestamp_offset = timestamp -
     std::chrono::microseconds((long)(relative_timestamp_ms*1000));
 
+  std::cout << "start visualizer" << std::endl;
   if(visualize) cv::namedWindow(visual_window,  cv::WINDOW_AUTOSIZE);
 
   // th is for separating the image processing thread from the main thread.
@@ -231,6 +241,7 @@ Mikiri::Mikiri(int fps, bool visualize) :
   exit = false;
   th = std::thread([this]() {
     constexpr auto w = std::chrono::milliseconds(1);
+    std::cout << "start thread" << std::endl;
     while(!exit) {
       const auto mdk_ = body();
       if(!mdk_) { // if mdk_ is none

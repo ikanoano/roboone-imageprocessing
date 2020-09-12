@@ -25,6 +25,7 @@ private:
   float                           depth_scale;
 
   std::mutex                      last_mdk_mutex;
+  std::mutex                      visual_mutex;
   boost::optional<men_do_kote_t>  last_mdk;
   std::thread                     th;
   bool                            exit;
@@ -35,6 +36,8 @@ private:
   rs2::align                      align;
   cv::GComputation                color2mdk;
   time_stamp_t                    depth_timestamp_offset;
+  bool                            visual_updated;
+  cv::Mat                         visual;
 
   boost::optional<men_do_kote_t>  body();
   bool                            uv_to_xyz(
