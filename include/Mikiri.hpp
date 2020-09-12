@@ -1,6 +1,7 @@
 #ifndef MIKIRI_H
 #define MIKIRI_H
 
+#include <cmath>
 #include <vector>
 #include <array>
 #include <thread>
@@ -78,10 +79,41 @@ inline Mikiri::target_cand_t Mikiri::conv_tct(const target_cand_t &tc) {
        |______|     ×--> x
           |         y
   */
+  // convert xyz
+  const double a[3] = { tc.coord[0], tc.coord[2], -tc.coord[1] };
+  /*
+     ______o_____   ^ y
+     |__      __|   |
+       |______|     0--> x
+          |         z
+                        n y
+ realsense- o          /
+           /    |   z 0
+        ==*=====0      \
+                `jiki   」 x
+  */
+  // move realsense onto the center point of the rail
+  const double b[3] = { a[0], a[1]+0.05, a[2] }; // y +50mm
+  /*
+                        n y
+ realsense             /
+         \      |   z 0
+        ==o=====0      \
+                `jiki   」 x
+  */
+  // head front
+  constexpr double rad = -3.14159265358979323846/4; // -45 deg
+  const double c[3] = { b[0]*std::cos(rad) - b[1]*std::sin(rad), b[0]*std::sin(rad) + b[1]*std::cos(rad), b[2] }; // z +50mm
+  /*
+                      ^ y
+ realsense            |
+         \      |   z 0--> x
+        ==o=====0
+  */
+  // move realsense to jiki
   return {
-    { tc.coord[2]+hard_offset[0],
-     -tc.coord[0]+hard_offset[1],
-     -tc.coord[1]+hard_offset[2]},
+    { c[0]-0.27, c[1]+0.03, c[2]-0.025 },
+    //{ a[0], a[1], a[2] },
     tc.area
   };
 }

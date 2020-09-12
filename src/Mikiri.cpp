@@ -138,13 +138,8 @@ boost::optional<Mikiri::men_do_kote_t> Mikiri::body () {
   for (auto&& e : kotes) e = conv_tct(e);
 
   if(visualize) {
-    cv::Point2f src_center(visual_ext.cols/2.0F, visual_ext.rows/2.0F);
-    cv::Mat rot_mat = getRotationMatrix2D(src_center, -90, 1.0);
-    rot_mat.at<double>(0,2) += -visual_ext.cols/2 + visual_ext.rows/2;
-    rot_mat.at<double>(1,2) += -visual_ext.rows/2 + visual_ext.cols/2;
-
     std::lock_guard lock(visual_mutex);
-    cv::warpAffine(visual_ext, visual, rot_mat, cv::Size(visual_ext.rows,visual_ext.cols));
+    visual = visual_ext;
     assert(visual.size().height>0 && visual.size().width>0);
     visual_updated = true;
   }
