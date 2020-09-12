@@ -191,6 +191,18 @@ Mikiri::Mikiri(int fps, bool visualize) :
   std::cout << "CV version: " << CV_VERSION          << std::endl;
   std::cout << "RS version: " << RS2_API_VERSION_STR << std::endl;
 
+  // reset 
+  {
+    std::cout << "resetting device" << std::endl;
+    rs2::context ctx;
+    rs2::device dev = ctx.query_devices().front(); // Reset the first device
+    dev.hardware_reset();
+    std::this_thread::sleep_for(std::chrono::milliseconds(2000));
+    rs2::device_hub hub(ctx);
+    hub.wait_for_device();
+    std::cout << "reset done" << std::endl;
+  }
+
   // video stream
   cfg.disable_all_streams();
   cfg.enable_stream(RS2_STREAM_COLOR, 1280, 720, RS2_FORMAT_BGR8, fps);

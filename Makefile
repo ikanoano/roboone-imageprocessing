@@ -25,7 +25,7 @@ endif
 ifdef PROF
   CPPFLAGS+=-pg -O2
 else
-  CPPFLAGS+=-O3
+  CPPFLAGS+=-O2
 endif
 
 all: $(TARGET)
@@ -43,6 +43,8 @@ $(BLDDIR)/%.o: test/%.cpp
 
 imtest: $(BLDDIR)/main.o $(TARGET)
 	g++ $(CPPFLAGS) $(LIBS) $^ -o $@
+imtestrun: imtest
+	./imtest
 
 -include $(DEPS)
 
