@@ -20,7 +20,7 @@ int main() {
   OpponentUnit o(30, visualize);
 
   while (true) {
-    const auto s_ = o.survey(std::chrono::milliseconds(30));
+    const auto s_ = o.survey();
 
 #ifdef EVAL_PREDICTION
     continue;
