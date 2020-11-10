@@ -44,10 +44,11 @@ boost::optional<Mikiri::men_do_kote_t> Mikiri::body () {
   assert(color_in.size() == depth_in.size()*dec_magnitude);
 
   cv::Mat men_ext, do_ext, kote_ext, visual_ext;
+  int startflag;
   color2mdk.apply(
     cv::gin(color_in, depth_in),
-    visualize ? cv::gout(men_ext, do_ext, kote_ext, visual_ext) :
-                cv::gout(men_ext, do_ext, kote_ext)
+    visualize ? cv::gout(men_ext, do_ext, kote_ext, startflag, visual_ext) :
+                cv::gout(men_ext, do_ext, kote_ext, startflag)
   );
 
   std::vector<target_cand_t>  mens, dos, kotes;
@@ -275,6 +276,8 @@ cv::GComputation Mikiri::gen_computation(bool visualize) {
     red_thresh_up2    (cv::Scalar(  6, 255, 255)),
     blue_thresh_low   (cv::Scalar( 98, 128,  48)),
     blue_thresh_up    (cv::Scalar(128, 255, 255)),
+    green_thresh_low  (cv::Scalar(180, 128, 128)),
+    green_thresh_up   (cv::Scalar(280, 255, 255)),
     yellow_thresh_low (cv::Scalar( 20, 128, 160)),
     yellow_thresh_up  (cv::Scalar( 33, 255, 255));
   const cv::GMat
@@ -295,6 +298,7 @@ cv::GComputation Mikiri::gen_computation(bool visualize) {
     red       (cv::gapi::bitwise_or(red1, red2)),
     blue      (cv::gapi::inRange(cresize, blue_thresh_low , blue_thresh_up)),
     yellow    (cv::gapi::inRange(cresize, yellow_thresh_low, yellow_thresh_up)),
+    green     (cv::gapi::inRange(cresize, green_thresh_low, green_thresh_up)),
     masked_r  (cv::gapi::mask(red, dmask)),
     masked_b  (cv::gapi::mask(blue, dmask)),
     masked_y  (cv::gapi::mask(yellow, dmask)),
@@ -309,11 +313,13 @@ cv::GComputation Mikiri::gen_computation(bool visualize) {
     mresize   (cv::gapi::resize(merge, cv::Size(), resize_scale_inv, resize_scale_inv)),
     dmresize  (cv::gapi::resize(dmask, cv::Size(), resize_scale_inv_depth, resize_scale_inv_depth)),
     visual    (cv::gapi::addWeighted(bgrin, 0.5, mresize, 0.75, 0.0));
+  const cv::GOpaque<int>
+    startflag (cv::gapi::countNonZero(green));
 
   return cv::GComputation(
     cv::GIn(bgrin, din),
-    visualize ? cv::GOut(bin_r, bin_b, bin_y, visual) :
-                cv::GOut(bin_r, bin_b, bin_y)
+    visualize ? cv::GOut(bin_r, bin_b, bin_y, startflag, visual) :
+                cv::GOut(bin_r, bin_b, bin_y, startflag)
   );
 }
 
