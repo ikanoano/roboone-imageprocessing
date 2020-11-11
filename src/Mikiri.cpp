@@ -44,12 +44,14 @@ boost::optional<Mikiri::men_do_kote_t> Mikiri::body () {
   assert(color_in.size() == depth_in.size()*dec_magnitude);
 
   cv::Mat men_ext, do_ext, kote_ext, visual_ext;
-  int startflag;
+  int green_area;
   color2mdk.apply(
     cv::gin(color_in, depth_in),
-    visualize ? cv::gout(men_ext, do_ext, kote_ext, startflag, visual_ext) :
-                cv::gout(men_ext, do_ext, kote_ext, startflag)
+    visualize ? cv::gout(men_ext, do_ext, kote_ext, green_area, visual_ext) :
+                cv::gout(men_ext, do_ext, kote_ext, green_area)
   );
+  const int   refsize   = men_ext.size().height * men_ext.size().width / 12;
+  const bool  startflag = green_area > refsize;
 
   std::vector<target_cand_t>  mens, dos, kotes;
   const auto annotate = [&](const float xyz[3], const cv::Point p) {
@@ -147,7 +149,7 @@ boost::optional<Mikiri::men_do_kote_t> Mikiri::body () {
 
   const auto timestamp =
     depth_timestamp_offset + std::chrono::microseconds((long)(depth_rs.get_timestamp()*1000));
-  return men_do_kote_t{timestamp, mens, dos, kotes};
+  return men_do_kote_t{timestamp, mens, dos, kotes, startflag};
 }
 
 bool Mikiri::uv_to_xyz(float xyz[3], const rs2::depth_frame& frame, const int u, const int v) {
@@ -276,8 +278,8 @@ cv::GComputation Mikiri::gen_computation(bool visualize) {
     red_thresh_up2    (cv::Scalar(  6, 255, 255)),
     blue_thresh_low   (cv::Scalar( 98, 128,  48)),
     blue_thresh_up    (cv::Scalar(128, 255, 255)),
-    green_thresh_low  (cv::Scalar(180, 128, 128)),
-    green_thresh_up   (cv::Scalar(280, 255, 255)),
+    green_thresh_low  (cv::Scalar( 40,  96,  48)),
+    green_thresh_up   (cv::Scalar( 75, 255, 208)),
     yellow_thresh_low (cv::Scalar( 20, 128, 160)),
     yellow_thresh_up  (cv::Scalar( 33, 255, 255));
   const cv::GMat
@@ -314,12 +316,12 @@ cv::GComputation Mikiri::gen_computation(bool visualize) {
     dmresize  (cv::gapi::resize(dmask, cv::Size(), resize_scale_inv_depth, resize_scale_inv_depth)),
     visual    (cv::gapi::addWeighted(bgrin, 0.5, mresize, 0.75, 0.0));
   const cv::GOpaque<int>
-    startflag (cv::gapi::countNonZero(green));
+    green_area(cv::gapi::countNonZero(green));
 
   return cv::GComputation(
     cv::GIn(bgrin, din),
-    visualize ? cv::GOut(bin_r, bin_b, bin_y, startflag, visual) :
-                cv::GOut(bin_r, bin_b, bin_y, startflag)
+    visualize ? cv::GOut(bin_r, bin_b, bin_y, green_area, visual) :
+                cv::GOut(bin_r, bin_b, bin_y, green_area)
   );
 }
 

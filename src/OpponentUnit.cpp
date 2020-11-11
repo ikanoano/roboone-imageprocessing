@@ -115,6 +115,7 @@ boost::optional<OpponentUnit::OpponentModel> OpponentUnit::survey() {
   om.dou  = predict(pick_dou);
   om.kote = predict(pick_kote);
 #endif
+  om.startflag = mdk.startflag;
 
   // TODO add some process to get OpponentBehavior ...
   om.behavior = OpponentBehavior::STABLE_NEAR;

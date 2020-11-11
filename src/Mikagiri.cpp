@@ -44,5 +44,5 @@ boost::optional<Mikagiri::men_do_kote_t> Mikagiri::get_men_do_kote() {
   if(douex)     dos.push_back({d, 10});
   if(koteex)  kotes.push_back({k, 10});
 
-  return men_do_kote_t{time_stamp, mens, dos, kotes};
+  return men_do_kote_t{time_stamp, mens, dos, kotes, false};
 }

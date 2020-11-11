@@ -17,6 +17,7 @@ public:
     std::vector<target_cand_t>  mens;
     std::vector<target_cand_t>  dos;
     std::vector<target_cand_t>  kotes;
+    bool                        startflag;
   };
 
   const int   FPS;

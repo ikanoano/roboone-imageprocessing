@@ -68,6 +68,7 @@ public:
     boost::optional<OpponentPart> men;
     boost::optional<OpponentPart> dou;
     boost::optional<OpponentPart> kote;
+    bool                          startflag;
   };
 
   void startCamera();
