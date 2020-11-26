@@ -325,3 +325,31 @@ cv::GComputation Mikiri::gen_computation(bool visualize) {
   );
 }
 
+Mikiri::target_cand_t Mikiri::conv_tct(const target_cand_t &tc) {
+// 下がx+ coord[0] /上がx-
+// 左がy+ coord[1] /右がy-
+// 奥がz+ coord[2] /手前がz-
+  const double a[3] = { -tc.coord[2], tc.coord[1], -tc.coord[0] };
+// 右がx+
+// 奥がy+
+// 上がz+
+  /*
+     ______o_____   ^ y
+     |__      __|   |
+       |______|     0--> x
+          |         z
+  */
+  // move realsense onto the center point of the rail
+  const double b[3] = { a[0], a[1]+0.045, a[2] }; // y +45mm
+  // head front
+  constexpr double rad = -3.14159265358979323846*55/180; // -35 deg
+  const double c[3] = { b[0]*std::cos(rad) - b[1]*std::sin(rad), b[0]*std::sin(rad) + b[1]*std::cos(rad), b[2] };
+  // move realsense to jiki
+  const double d[3] =   { c[0]-0.280, c[1]-0.110, c[2]+0.195 };
+        // fix coordinate!!
+  return {
+    { d[1]+0.045,d[0]+0.520,d[2]-0.05},
+    //{ a[0], a[1], a[2] },
+    tc.area
+  };
+}
