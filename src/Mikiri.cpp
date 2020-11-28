@@ -133,7 +133,7 @@ boost::optional<Mikiri::men_do_kote_t> Mikiri::body () {
   };
 
   detect_do_kote(  do_ext, dos,   cv::Scalar(255,224,224));
-  detect_do_kote(kote_ext, kotes, cv::Scalar(255,255,224));
+  //detect_do_kote(kote_ext, kotes, cv::Scalar(255,255,224));
 
   // Convert realsense coordinate system to actionplan's one
   for (auto&& e : mens)  e = conv_tct(e);
