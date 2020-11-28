@@ -132,12 +132,18 @@ boost::optional<Mikiri::men_do_kote_t> Mikiri::body () {
     }
   };
 
-  detect_do_kote(  do_ext, dos,   cv::Scalar(255,224,224));
+  //detect_do_kote(  do_ext, dos,   cv::Scalar(255,224,224));
   //detect_do_kote(kote_ext, kotes, cv::Scalar(255,255,224));
 
   // Convert realsense coordinate system to actionplan's one
   for (auto&& e : mens)  e = conv_tct(e);
-  for (auto&& e : dos)  {e = conv_tct(e); e.coord[2]-=0.03;}
+  //for (auto&& e : dos)  {e = conv_tct(e); e.coord[2]-=0.03;}
+  for (auto& e : mens)  {
+      dos.push_back({
+        {e.coord[0], e.coord[1], e.coord[2]-0.21},
+        e.area*10
+      });
+  }
   for (auto&& e : kotes) e = conv_tct(e);
 
   if(visualize) {
