@@ -137,7 +137,7 @@ boost::optional<Mikiri::men_do_kote_t> Mikiri::body () {
 
   // Convert realsense coordinate system to actionplan's one
   for (auto&& e : mens)  e = conv_tct(e);
-  for (auto&& e : dos)   e = conv_tct(e);
+  for (auto&& e : dos)  {e = conv_tct(e); e.coord[2]-=0.03;}
   for (auto&& e : kotes) e = conv_tct(e);
 
   if(visualize) {
