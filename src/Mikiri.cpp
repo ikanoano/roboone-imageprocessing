@@ -145,6 +145,12 @@ boost::optional<Mikiri::men_do_kote_t> Mikiri::body () {
   for (auto& e : dos)  {e = conv_tct(e); e.coord[2]-=0.03;}
   for (auto& e : kotes) e = conv_tct(e);
 
+  // Prune if target is too far or too near
+  const auto out_of_range = [](target_cand_t e) -> bool { return e.coord[0]>1 || e.coord[0]<0.050; };
+  auto rmv0 = std::remove_if( mens.begin(),  mens.end(), out_of_range);  mens.erase(rmv0,  mens.end());
+  auto rmv1 = std::remove_if(  dos.begin(),   dos.end(), out_of_range);   dos.erase(rmv1,   dos.end());
+  auto rmv2 = std::remove_if(kotes.begin(), kotes.end(), out_of_range); kotes.erase(rmv2, kotes.end());
+
   if(visualize) {
     std::lock_guard lock(visual_mutex);
     visual = visual_ext;

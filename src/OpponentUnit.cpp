@@ -99,10 +99,11 @@ boost::optional<OpponentUnit::OpponentModel> OpponentUnit::survey() {
     }
   };
 
+  // pick second big one to cancel selfie
   const std::function<const Mikagiri::target_cand_t*(Mikagiri::men_do_kote_t&)>
-    pick_men  = [](const auto &a) {return a.mens.empty()  ? nullptr : &a.mens[0];},
-    pick_dou  = [](const auto &a) {return a.dos.empty()   ? nullptr : &a.dos[0];},
-    pick_kote = [](const auto &a) {return a.kotes.empty() ? nullptr : &a.kotes[0];};
+    pick_men  = [](const auto &a) {return a.mens.empty()  ? nullptr : &a.mens [std::min<size_t>(1, a.mens.size() -1)];},
+    pick_dou  = [](const auto &a) {return a.dos.empty()   ? nullptr : &a.dos  [std::min<size_t>(1, a.dos.size()  -1)];},
+    pick_kote = [](const auto &a) {return a.kotes.empty() ? nullptr : &a.kotes[std::min<size_t>(1, a.kotes.size()-1)];};
 
   // predict men/dou/kote
   OpponentModel om;
