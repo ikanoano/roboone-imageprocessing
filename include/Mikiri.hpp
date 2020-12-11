@@ -51,7 +51,7 @@ private:
   static cv::Size                 get_cv_size(const rs2::video_frame &f);
   static cv::Point2f              contour_center(const std::vector<cv::Point> &contour);
   static cv::GComputation         gen_computation(bool visualize);
-  static target_cand_t            adj_center(const target_cand_t &tc, const float gap);
+  static target_cand_t            adj_center(const target_cand_t &tc, const float gap, bool po);
   static target_cand_t            conv_tct(const target_cand_t &tc);
 
   static constexpr double

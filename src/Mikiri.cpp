@@ -331,10 +331,17 @@ cv::GComputation Mikiri::gen_computation(bool visualize) {
 }
 
 // push target little away to compensate the gap between the target surface and its volume center
-Mikiri::target_cand_t Mikiri::adj_center(const target_cand_t &tc, const float gap) {
+Mikiri::target_cand_t Mikiri::adj_center(const target_cand_t &tc, const float gap, bool debug=false) {
   const float norm = std::sqrt(tc.coord[0]*tc.coord[0] + tc.coord[1]*tc.coord[1] + tc.coord[2]*tc.coord[2]);
   const std::array<float, 3> normalized = {tc.coord[0]/norm, tc.coord[1]/norm, tc.coord[2]/norm};
-  return {{tc.coord[0]+normalized[0]*gap, tc.coord[1]+normalized[1]*gap, tc.coord[2]+normalized[2]*gap}, tc.area};
+  Mikiri::target_cand_t pi = {{tc.coord[0]+normalized[0]*gap, tc.coord[1]+normalized[1]*gap, tc.coord[2]+normalized[2]*gap}, tc.area};
+  if (debug) {
+    std::cout << " norm      = " << norm << std::endl;
+    std::cout << " normalized={" << normalized[0] << ", " << normalized[1] << ", " << normalized[2] << "}" << std::endl;
+    std::cout << " org=       {" << tc.coord[0] << ", " << tc.coord[1] << ", " << tc.coord[2] << "}" << std::endl;
+    std::cout << " adj=       {" << pi.coord[0] << ", " << pi.coord[1] << ", " << pi.coord[2] << "}" << std::endl;
+  }
+  return pi;
 }
 
 Mikiri::target_cand_t Mikiri::conv_tct(const target_cand_t &tc) {
