@@ -135,10 +135,15 @@ boost::optional<Mikiri::men_do_kote_t> Mikiri::body () {
   detect_do_kote(  do_ext, dos,   cv::Scalar(255,224,224));
   //detect_do_kote(kote_ext, kotes, cv::Scalar(255,255,224));
 
+  // adjust coordinates considering the volume center of the target
+  for (auto& e : mens)  e = adj_center(e, men_s2c_gap);
+  for (auto& e : dos)   e = adj_center(e, dou_s2c_gap);
+  for (auto& e : kotes) e = adj_center(e, kote_s2c_gap);
+
   // Convert realsense coordinate system to actionplan's one
-  for (auto&& e : mens)  e = conv_tct(e);
-  for (auto&& e : dos)  {e = conv_tct(e); e.coord[2]-=0.03;}
-  for (auto&& e : kotes) e = conv_tct(e);
+  for (auto& e : mens)  e = conv_tct(e);
+  for (auto& e : dos)  {e = conv_tct(e); e.coord[2]-=0.03;}
+  for (auto& e : kotes) e = conv_tct(e);
 
   if(visualize) {
     std::lock_guard lock(visual_mutex);
@@ -323,6 +328,20 @@ cv::GComputation Mikiri::gen_computation(bool visualize) {
     visualize ? cv::GOut(bin_r, bin_b, bin_y, green_area, visual) :
                 cv::GOut(bin_r, bin_b, bin_y, green_area)
   );
+}
+
+// push target little away to compensate the gap between the target surface and its volume center
+Mikiri::target_cand_t Mikiri::adj_center(const target_cand_t &tc, const float gap, bool debug=false) {
+  const float norm = std::sqrt(tc.coord[0]*tc.coord[0] + tc.coord[1]*tc.coord[1] + tc.coord[2]*tc.coord[2]);
+  const std::array<float, 3> normalized = {tc.coord[0]/norm, tc.coord[1]/norm, tc.coord[2]/norm};
+  Mikiri::target_cand_t pi = {{tc.coord[0]+normalized[0]*gap, tc.coord[1]+normalized[1]*gap, tc.coord[2]+normalized[2]*gap}, tc.area};
+  if (debug) {
+    std::cout << " norm      = " << norm << std::endl;
+    std::cout << " normalized={" << normalized[0] << ", " << normalized[1] << ", " << normalized[2] << "}" << std::endl;
+    std::cout << " org=       {" << tc.coord[0] << ", " << tc.coord[1] << ", " << tc.coord[2] << "}" << std::endl;
+    std::cout << " adj=       {" << pi.coord[0] << ", " << pi.coord[1] << ", " << pi.coord[2] << "}" << std::endl;
+  }
+  return pi;
 }
 
 Mikiri::target_cand_t Mikiri::conv_tct(const target_cand_t &tc) {

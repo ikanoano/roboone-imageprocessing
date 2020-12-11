@@ -51,6 +51,7 @@ private:
   static cv::Size                 get_cv_size(const rs2::video_frame &f);
   static cv::Point2f              contour_center(const std::vector<cv::Point> &contour);
   static cv::GComputation         gen_computation(bool visualize);
+  static target_cand_t            adj_center(const target_cand_t &tc, const float gap, bool po);
   static target_cand_t            conv_tct(const target_cand_t &tc);
 
   static constexpr double
@@ -60,6 +61,11 @@ private:
     resize_scale_inv_depth  = 1/resize_scale_depth;
   static constexpr float hard_offset[3] = {0.075, 0.132, 0.01};
   const char* visual_window = "MEN(red) DO(blue) KOTE(green) Visualizer";
+
+  // surface to volume center gap in meter
+  static constexpr float    men_s2c_gap   = 0.05 / 2;
+  static constexpr float    dou_s2c_gap   = 0.14 / 2;
+  static constexpr float    kote_s2c_gap  = 0.03 / 2;
 };
 
 inline cv::Size Mikiri::get_cv_size(const rs2::video_frame &f) {
