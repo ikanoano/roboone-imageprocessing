@@ -146,7 +146,7 @@ boost::optional<Mikiri::men_do_kote_t> Mikiri::body () {
   for (auto& e : kotes) e = conv_tct(e);
 
   // Prune if target is too far or too near
-  const auto out_of_range = [](target_cand_t e) -> bool { return e.coord[0]>1 || e.coord[0]<0.050; };
+  const auto out_of_range = [](target_cand_t e) -> bool { return e.coord[0]>0.7 || e.coord[0]<0.350; };
   auto rmv0 = std::remove_if( mens.begin(),  mens.end(), out_of_range);  mens.erase(rmv0,  mens.end());
   auto rmv1 = std::remove_if(  dos.begin(),   dos.end(), out_of_range);   dos.erase(rmv1,   dos.end());
   auto rmv2 = std::remove_if(kotes.begin(), kotes.end(), out_of_range); kotes.erase(rmv2, kotes.end());
@@ -373,7 +373,7 @@ Mikiri::target_cand_t Mikiri::conv_tct(const target_cand_t &tc) {
   const double d[3] =   { c[0]-0.280, c[1]-0.110, c[2]+0.195 };
         // fix coordinate!!
   return {
-    { d[1]+0.042,d[0]+0.540,d[2]-0.03},
+    { d[1]+0.022,d[0]+0.555,d[2]-0.05},
     tc.area
   };
 }
