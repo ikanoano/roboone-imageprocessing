@@ -137,7 +137,7 @@ boost::optional<Mikiri::men_do_kote_t> Mikiri::body () {
 
   // adjust coordinates considering the volume center of the target
   for (auto& e : mens)  e = adj_center(e, men_s2c_gap);
-  for (auto& e : dos)   e = adj_center(e, dou_s2c_gap);
+  for (auto& e : dos)  {e = adj_center(e, dou_s2c_gap); e.coord[2]-=0.02f; };
   for (auto& e : kotes) e = adj_center(e, kote_s2c_gap);
 
   // Convert realsense coordinate system to actionplan's one
