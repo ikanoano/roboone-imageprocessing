@@ -1,29 +1,38 @@
 // License: Apache 2.0. See LICENSE file in root directory.
 // Copyright(c) 2017 Intel Corporation. All Rights Reserved.
 
+#include <numeric>
+#include <utility>
+#include <tuple>
 #include <librealsense2/rsutil.h>
-#include <opencv2/opencv.hpp>
 #include <opencv2/gapi/core.hpp>
 #include <opencv2/gapi/imgproc.hpp>
-#include <numeric>
-#include <tuple>
-#include "Mikiri.hpp"
+#include "../include/Mikiri.hpp"
 
-Mikiri::men_do_kote_t Mikiri::get_men_do_kote(
-    cv::Mat&  men_do_kote_visual
-) {
+// nonblocking
+boost::optional<Mikiri::men_do_kote_t> Mikiri::get_men_do_kote () {
+  if(visualize) {
+    if(cv::waitKey(1)=='q') {exit=true;} // imshow needs waitKey to be updated
+    std::lock_guard lock(visual_mutex);
+    if(visual_updated) {cv::imshow(visual_window, visual);}
+    visual_updated=false;
+  }
+  std::lock_guard lock(last_mdk_mutex);
+  return std::exchange(last_mdk, boost::none);
+}
+
+boost::optional<Mikiri::men_do_kote_t> Mikiri::body () {
   constexpr int vthick = 3;
 
   // Wait for next set of frames from the camera
-  rs2::frameset    frameset  = align.process(pipe.wait_for_frames());
-  rs2::video_frame color_rs  = frameset.get_color_frame();
-  rs2::depth_frame depth_rs  = frameset.get_depth_frame();
-  while(!color_rs || !depth_rs) {
-    // TODO: dirty
-    frameset  = align.process(pipe.wait_for_frames());
-    color_rs  = frameset.get_color_frame();
-    depth_rs  = frameset.get_depth_frame();
-  }
+  rs2::frameset     frame_cd;
+  if(!pipe.poll_for_frames(&frame_cd)) return boost::none;
+
+  // Align & filtering
+  rs2::frameset     aligned   = align.process(frame_cd);
+  rs2::video_frame  color_rs  = aligned.get_color_frame();
+  rs2::depth_frame  depth_rs  = aligned.get_depth_frame();
+  if(!color_rs || !depth_rs) return boost::none;
   depth_rs = depth_rs.apply_filter(dec_filter);
   depth_rs = depth_rs.apply_filter(spat_filter);
 
@@ -34,18 +43,22 @@ Mikiri::men_do_kote_t Mikiri::get_men_do_kote(
 
   assert(color_in.size() == depth_in.size()*dec_magnitude);
 
-  cv::Mat men_ext, do_ext, kote_ext;
+  cv::Mat men_ext, do_ext, kote_ext, visual_ext;
+  int green_area;
   color2mdk.apply(
     cv::gin(color_in, depth_in),
-    cv::gout(men_ext, do_ext, kote_ext, men_do_kote_visual)
+    visualize ? cv::gout(men_ext, do_ext, kote_ext, green_area, visual_ext) :
+                cv::gout(men_ext, do_ext, kote_ext, green_area)
   );
+  const int   refsize   = men_ext.size().height * men_ext.size().width / 12;
+  const bool  startflag = green_area > refsize;
 
   std::vector<target_cand_t>  mens, dos, kotes;
   const auto annotate = [&](const float xyz[3], const cv::Point p) {
     char buf[128];
     sprintf(buf, "(%5.3f, %5.3f, %5.3f)", xyz[0], xyz[1], xyz[2]);
-    cv::putText(men_do_kote_visual, buf, p, cv::FONT_HERSHEY_SIMPLEX, 1, cv::Scalar(  0,  0,  0), 7, cv::LINE_AA);
-    cv::putText(men_do_kote_visual, buf, p, cv::FONT_HERSHEY_SIMPLEX, 1, cv::Scalar(255,255,255), 2, cv::LINE_AA);
+    cv::putText(visual_ext, buf, p, cv::FONT_HERSHEY_SIMPLEX, 1, cv::Scalar(  0,  0,  0), 7, cv::LINE_AA);
+    cv::putText(visual_ext, buf, p, cv::FONT_HERSHEY_SIMPLEX, 1, cv::Scalar(255,255,255), 2, cv::LINE_AA);
   };
 
   // detect MEN
@@ -70,14 +83,15 @@ Mikiri::men_do_kote_t Mikiri::get_men_do_kote(
     mens.push_back({{xyz[0], xyz[1], xyz[2]}, area});
 
     // Draw
-    cv::circle(men_do_kote_visual, center, radius, cv::Scalar(224,224,255), vthick, 8, 0);
+    if(!visualize) continue;
+    cv::circle(visual_ext, center, radius, cv::Scalar(224,224,255), vthick, 8, 0);
     annotate(xyz, center);
   }
 
   // detect DO and KOTE
   const auto detect_do_kote = [&](const auto &ext, auto &parts, const auto color) {
     std::vector<std::vector<cv::Point> > contours;
-    cv::findContours(ext, contours, cv::RETR_LIST, cv::CHAIN_APPROX_SIMPLE);
+    cv::findContours(ext, contours, cv::RETR_EXTERNAL, cv::CHAIN_APPROX_SIMPLE);
 
     for (const auto& contour : contours) {
       // Approximate curves with lines
@@ -87,6 +101,8 @@ Mikiri::men_do_kote_t Mikiri::get_men_do_kote(
 
       // Prune if curve is not like a rectangle
       if(approx.size() < 3 || approx.size() > 5) continue;
+      // Prune if contour is not convex
+      if(!cv::isContourConvex(approx)) continue;
       // Prune if area is too small
       const int area = cv::contourArea(approx);
       if(area < 50) continue;
@@ -107,33 +123,62 @@ Mikiri::men_do_kote_t Mikiri::get_men_do_kote(
       });
 
       // Draw
+      if(!visualize) continue;
       std::vector<cv::Point> approxr;
       for (auto&& a : approx) { approxr.push_back(a*resize_scale_inv); }
       const std::vector<std::vector<cv::Point>> tmp = {approxr};
-      cv::drawContours(men_do_kote_visual, tmp, -1, color, vthick);
+      cv::drawContours(visual_ext, tmp, -1, color, vthick);
       annotate(xyz, center_color);
     }
   };
 
   detect_do_kote(  do_ext, dos,   cv::Scalar(255,224,224));
-  detect_do_kote(kote_ext, kotes, cv::Scalar(255,255,224));
+  //detect_do_kote(kote_ext, kotes, cv::Scalar(255,255,224));
+
+  // adjust coordinates considering the volume center of the target
+  for (auto& e : mens)  e = adj_center(e, men_s2c_gap);
+  for (auto& e : dos)  {e = adj_center(e, dou_s2c_gap); e.coord[2]-=0.02f; };
+  for (auto& e : kotes) e = adj_center(e, kote_s2c_gap);
 
   // Convert realsense coordinate system to actionplan's one
-  for (auto&& e : mens)  e = conv_tct(e);
-  for (auto&& e : dos)   e = conv_tct(e);
-  for (auto&& e : kotes) e = conv_tct(e);
-  return {mens, dos, kotes};
+  for (auto& e : mens)  e = conv_tct(e);
+  for (auto& e : dos)   e = conv_tct(e);
+  for (auto& e : kotes) e = conv_tct(e);
+
+  // Prune if target is too far or too near
+  const auto out_of_range = [](target_cand_t e) -> bool { return e.coord[0]>0.7 || e.coord[0]<0.350; };
+  auto rmv0 = std::remove_if( mens.begin(),  mens.end(), out_of_range);  mens.erase(rmv0,  mens.end());
+  auto rmv1 = std::remove_if(  dos.begin(),   dos.end(), out_of_range);   dos.erase(rmv1,   dos.end());
+  auto rmv2 = std::remove_if(kotes.begin(), kotes.end(), out_of_range); kotes.erase(rmv2, kotes.end());
+
+  if(visualize) {
+    std::lock_guard lock(visual_mutex);
+    visual = visual_ext;
+    assert(visual.size().height>0 && visual.size().width>0);
+    visual_updated = true;
+  }
+
+  const auto timestamp =
+    depth_timestamp_offset + std::chrono::microseconds((long)(depth_rs.get_timestamp()*1000));
+  return men_do_kote_t{timestamp, mens, dos, kotes, startflag};
 }
 
 bool Mikiri::uv_to_xyz(float xyz[3], const rs2::depth_frame& frame, const int u, const int v) {
+    const int fwidth  = frame.get_width();
+    const int fheight = frame.get_height();
     float dist = 0.0f;
     int validnum = 0;
-    for (int du = -2; du <= 2; du++)
-    for (int dv = -2; dv <= 2; dv++) {
-      const float tmp = frame.get_distance(u+du, v+dv);
-      if(tmp == 0.0f) continue;
-      validnum++;
-      dist += tmp;
+    for (int du = -2; du <= 2; du++) {
+      const int cu = u+du;
+      if(cu<0 || cu>=fwidth) continue;
+      for (int dv = -2; dv <= 2; dv++) {
+        const int cv = v+dv;
+        if(cv<0 || cv>=fheight) continue;
+        const float tmp = frame.get_distance(cu, cv);
+        if(tmp == 0.0f) continue;
+        validnum++;
+        dist += tmp;
+      }
     }
     if(validnum==0) return false;
     dist /= validnum;
@@ -141,26 +186,52 @@ bool Mikiri::uv_to_xyz(float xyz[3], const rs2::depth_frame& frame, const int u,
     // Deproject uv to xyz
     const rs2_intrinsics intr =
       frame.get_profile().as<rs2::video_stream_profile>().get_intrinsics();
-    const float uv[] = {(const float)u, (const float)v};
+    const float uv[] = {(float)u, (float)v};
     rs2_deproject_pixel_to_point(xyz, &intr, uv, dist);
     return true;
 }
 
-Mikiri::Mikiri(int fps) : FPS(fps), align(RS2_STREAM_COLOR), color2mdk(gen_computation()){
+Mikiri::Mikiri(int fps, bool visualize) :
+    Mikagiri(fps, visualize),
+    last_mdk(boost::none),
+    align(RS2_STREAM_COLOR),
+    color2mdk(gen_computation(visualize)),
+    visual_updated(false) {
   std::cout << "CV version: " << CV_VERSION          << std::endl;
   std::cout << "RS version: " << RS2_API_VERSION_STR << std::endl;
 
+  // reset 
+  {
+    std::cout << "resetting device" << std::endl;
+    rs2::context ctx;
+    rs2::device dev = ctx.query_devices().front(); // Reset the first device
+    dev.hardware_reset();
+    std::this_thread::sleep_for(std::chrono::milliseconds(2000));
+    rs2::device_hub hub(ctx);
+    hub.wait_for_device();
+    std::cout << "reset done" << std::endl;
+  }
+
   // video stream
   cfg.disable_all_streams();
-  cfg.enable_stream(RS2_STREAM_COLOR, RS2_FORMAT_BGR8, fps);
-  cfg.enable_stream(RS2_STREAM_DEPTH, RS2_FORMAT_Z16,  fps);
+  cfg.enable_stream(RS2_STREAM_COLOR, 1280, 720, RS2_FORMAT_BGR8, fps);
+  cfg.enable_stream(RS2_STREAM_DEPTH,  640, 480, RS2_FORMAT_Z16,  fps);
 
   // filters
   dec_filter.set_option(RS2_OPTION_FILTER_MAGNITUDE, dec_magnitude);
   spat_filter.set_option(RS2_OPTION_HOLES_FILL, 1); // 1 = 2 pix-radius fill
 
   // Instruct pipeline to start streaming with the requested configuration
+  std::cout << "pipe.start " << std::endl;
   auto profile = pipe.start(cfg);
+  rs2::frameset frame_cd;
+  time_stamp_t timestamp; // volatile is not allowed
+  std::cout << "polling for the first frame" << std::endl;
+  do {
+    timestamp = std::chrono::system_clock::now();
+    // always false; prevent from optimizing timestamp
+    if(depth_timestamp_offset > timestamp) break;
+  } while (!pipe.poll_for_frames(&frame_cd));
 
   // Set short_range accurate preset
   const auto dsensor = profile.get_device().first<rs2::depth_sensor>();
@@ -170,14 +241,45 @@ Mikiri::Mikiri(int fps) : FPS(fps), align(RS2_STREAM_COLOR), color2mdk(gen_compu
   depth_scale = dsensor.get_depth_scale();
 
   // Set auto exposure and auto white balance
-  // TODO: how to get camera device?
-  //const auto csensor = profile.get_device().first<rs2::sr300_color_sensor>();
-  //csensor.set_option(RS2_OPTION_ENABLE_AUTO_EXPOSURE, 1);
-  //csensor.set_option(RS2_OPTION_ENABLE_AUTO_WHITE_BALANCE, 1);
-  //csensor.set_option(RS2_OPTION_FRAMES_QUEUE_SIZE, 2);
+  rs2::video_frame color_rs = frame_cd.get_color_frame();
+  const auto csensor = rs2::sensor_from_frame(color_rs);
+  csensor->set_option(RS2_OPTION_ENABLE_AUTO_EXPOSURE, 1);
+  csensor->set_option(RS2_OPTION_ENABLE_AUTO_WHITE_BALANCE, 1);
+  csensor->set_option(RS2_OPTION_FRAMES_QUEUE_SIZE, 2);
+
+  // Set timestamp offset
+  rs2::depth_frame depth_rs = frame_cd.get_depth_frame();
+  double relative_timestamp_ms = depth_rs.get_timestamp();
+  depth_timestamp_offset = timestamp -
+    std::chrono::microseconds((long)(relative_timestamp_ms*1000));
+
+  std::cout << "start visualizer" << std::endl;
+  if(visualize) cv::namedWindow(visual_window,  cv::WINDOW_AUTOSIZE);
+
+  // th is for separating the image processing thread from the main thread.
+  // Not for interleaving a processing for each frame.
+  // Keep it runs in 1/FPS seconds not to drop any frame.
+  exit = false;
+  th = std::thread([this]() {
+    constexpr auto w = std::chrono::milliseconds(1);
+    std::cout << "start thread" << std::endl;
+    while(!exit) {
+      const auto mdk_ = body();
+      if(!mdk_) { // if mdk_ is none
+        std::this_thread::sleep_for(w);
+        continue;
+      }
+      std::lock_guard lock(last_mdk_mutex);
+      last_mdk = mdk_;
+    }
+  });
+}
+Mikiri::~Mikiri() {
+  exit = true;
+  th.join();
 }
 
-cv::GComputation Mikiri::gen_computation() {
+cv::GComputation Mikiri::gen_computation(bool visualize) {
   // Initialize GComputation
   const cv::GScalar   // HSV threshold for MEN, DO, and KOTE
     //                              H    S    V
@@ -187,7 +289,9 @@ cv::GComputation Mikiri::gen_computation() {
     red_thresh_up2    (cv::Scalar(  6, 255, 255)),
     blue_thresh_low   (cv::Scalar( 98, 128,  48)),
     blue_thresh_up    (cv::Scalar(128, 255, 255)),
-    yellow_thresh_low (cv::Scalar( 20, 128,  96)),
+    green_thresh_low  (cv::Scalar( 40,  96,  48)),
+    green_thresh_up   (cv::Scalar( 75, 255, 208)),
+    yellow_thresh_low (cv::Scalar( 20, 128, 160)),
     yellow_thresh_up  (cv::Scalar( 33, 255, 255));
   const cv::GMat
     bgrin, din;
@@ -207,6 +311,7 @@ cv::GComputation Mikiri::gen_computation() {
     red       (cv::gapi::bitwise_or(red1, red2)),
     blue      (cv::gapi::inRange(cresize, blue_thresh_low , blue_thresh_up)),
     yellow    (cv::gapi::inRange(cresize, yellow_thresh_low, yellow_thresh_up)),
+    green     (cv::gapi::inRange(cresize, green_thresh_low, green_thresh_up)),
     masked_r  (cv::gapi::mask(red, dmask)),
     masked_b  (cv::gapi::mask(blue, dmask)),
     masked_y  (cv::gapi::mask(yellow, dmask)),
@@ -215,16 +320,60 @@ cv::GComputation Mikiri::gen_computation() {
     blur_y    (cv::gapi::blur(masked_y, cv::Size( 5,  5))),
     bin_r     (std::get<0>(cv::gapi::threshold(blur_r, cv::GScalar(255), cv::THRESH_OTSU))),
     bin_b     (std::get<0>(cv::gapi::threshold(blur_b, cv::GScalar(255), cv::THRESH_OTSU))),
-    bin_y     (std::get<0>(cv::gapi::threshold(blur_y, cv::GScalar(255), cv::THRESH_OTSU))),
+    bin_y     (cv::gapi::cmpGT(blur_y, cv::GScalar(127))),
     merge     (cv::gapi::merge3(bin_b, bin_y, bin_r)),
     // visualize
     mresize   (cv::gapi::resize(merge, cv::Size(), resize_scale_inv, resize_scale_inv)),
     dmresize  (cv::gapi::resize(dmask, cv::Size(), resize_scale_inv_depth, resize_scale_inv_depth)),
     visual    (cv::gapi::addWeighted(bgrin, 0.5, mresize, 0.75, 0.0));
+  const cv::GOpaque<int>
+    green_area(cv::gapi::countNonZero(green));
 
   return cv::GComputation(
     cv::GIn(bgrin, din),
-    cv::GOut(bin_r, bin_b, bin_y, visual)
+    visualize ? cv::GOut(bin_r, bin_b, bin_y, green_area, visual) :
+                cv::GOut(bin_r, bin_b, bin_y, green_area)
   );
 }
 
+// push target little away to compensate the gap between the target surface and its volume center
+Mikiri::target_cand_t Mikiri::adj_center(const target_cand_t &tc, const float gap, bool debug) {
+  const float norm = std::sqrt(tc.coord[0]*tc.coord[0] + tc.coord[1]*tc.coord[1] + tc.coord[2]*tc.coord[2]);
+  const std::array<float, 3> normalized = {tc.coord[0]/norm, tc.coord[1]/norm, tc.coord[2]/norm};
+  Mikiri::target_cand_t pi = {{tc.coord[0]+normalized[0]*gap, tc.coord[1]+normalized[1]*gap, tc.coord[2]+normalized[2]*gap}, tc.area};
+  if (debug) {
+    std::cout << " norm      = " << norm << std::endl;
+    std::cout << " normalized={" << normalized[0] << ", " << normalized[1] << ", " << normalized[2] << "}" << std::endl;
+    std::cout << " org=       {" << tc.coord[0] << ", " << tc.coord[1] << ", " << tc.coord[2] << "}" << std::endl;
+    std::cout << " adj=       {" << pi.coord[0] << ", " << pi.coord[1] << ", " << pi.coord[2] << "}" << std::endl;
+  }
+  return pi;
+}
+
+Mikiri::target_cand_t Mikiri::conv_tct(const target_cand_t &tc) {
+// 下がx+ coord[0] /上がx-
+// 左がy+ coord[1] /右がy-
+// 奥がz+ coord[2] /手前がz-
+  const double a[3] = { -tc.coord[2], tc.coord[1], -tc.coord[0] };
+// 右がx+
+// 奥がy+
+// 上がz+
+  /*
+     ______o_____   ^ y
+     |__      __|   |
+       |______|     0--> x
+          |         z
+  */
+  // move realsense onto the center point of the rail
+  const double b[3] = { a[0], a[1]+0.045, a[2] }; // y +45mm
+  // head front
+  constexpr double rad = -3.14159265358979323846*55/180; // -35 deg
+  const double c[3] = { b[0]*std::cos(rad) - b[1]*std::sin(rad), b[0]*std::sin(rad) + b[1]*std::cos(rad), b[2] };
+  // move realsense to jiki
+  const double d[3] =   { c[0]-0.280, c[1]-0.110, c[2]+0.195 };
+        // fix coordinate!!
+  return {
+    { d[1]+0.022,d[0]+0.555,d[2]-0.05},
+    tc.area
+  };
+}
